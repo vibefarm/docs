@@ -1,0 +1,144 @@
+---
+title: "What We Own vs. Rent"
+sidebarTitle: "Own vs. Rent"
+description: "How Rule & Form distinguishes between the software it owns outright and the infrastructure it rents — and why that distinction matters."
+---
+
+# Own the logic. Rent the commodities.
+
+Rule & Form does not need to own a phone network, a payment processor, a hosting company, or a browser rendering engine to own the system its customers depend on.
+
+Building commodity infrastructure from scratch would not make the product more defensible. It would make it more expensive, slower to improve, and harder to maintain.
+
+The important question is not whether every layer was invented here. It is **which layers contain the decisions that make Rule & Form work.**
+
+## Most software is assembled from things someone else is better at.
+
+Framer can publish and host websites. HighLevel can move calls, messages, and conversations. PostgreSQL can store data. Vercel can run applications. Stripe can move money.
+
+Rebuilding those capabilities would consume years without changing what Rule & Form is.
+
+So we rent them.
+
+What we do not rent is the system that knows what a contractor told us, what should exist for that business, which providers should receive which information, what has been configured, what has failed, what a customer changed, and what should happen next.
+
+**The providers execute. Rule & Form decides.**
+
+## The product lives above the providers.
+
+A plumbing company is not represented in Rule & Form as a Framer project or a HighLevel location.
+
+It has its own structured record: services, service areas, hours, contact rules, credentials, priorities, photos, offers, integrations, publishing state, and the other facts that define how the business should appear and operate.
+
+That record drives the execution layers beneath it.
+
+```text
+```
+
+```text
+Business Record
+      ↓
+Rule & Form logic
+      ↓
+Website publishing
+Communications
+Booking
+Lead routing
+CRM
+Localization
+Future providers
+```
+
+The website is one expression of the record. The CRM is another. The phone system is another.
+
+None of them is the source of truth.
+
+## That boundary is what keeps vendors replaceable.
+
+If Framer disappeared tomorrow, replacing it would be painful. It would not require rediscovering what every customer does, where they work, what services matter, how leads should be handled, or which content has been approved.
+
+The publishing adapter changes. The business does not.
+
+The same principle applies to communications infrastructure. A phone or CRM provider may change APIs, pricing, capabilities, or strategic direction. Rule & Form should be able to replace that execution layer without rebuilding the company around it.
+
+**Platforms can change. The Business Record remains.**
+
+## This is not abstraction for abstraction's sake.
+
+There is an easy way to overbuild this idea.
+
+Every provider does not need an elaborate universal framework. Every field does not need provenance graphs, conflict resolution, version trees, and generalized synchronization machinery before the first customers exist.
+
+The boundary only needs to be strong enough that provider-specific behavior does not become business logic.
+
+A website service should know that a customer offers drain cleaning. The Framer adapter should know how Framer needs to receive that information.
+
+Those are different responsibilities.
+
+Keeping them different is cheap now and expensive to fix later.
+
+## We own the parts that compound.
+
+Rule & Form owns the guided intake that turns an unfamiliar business into structured information. It owns the catalogs that know what questions to ask a plumber instead of a dentist. It owns the Business Record those answers create and the rules that determine what should be built from it.
+
+It also owns the mappings, provider adapters, provisioning logic, publishing workflow, managed-change system, localization behavior, integration decisions, and the growing body of exceptions that become product logic.
+
+Those pieces get better with use.
+
+The fiftieth plumbing customer benefits from decisions made while serving the first forty-nine. A new provider can inherit the same business data. A better publishing system can replace the old one without changing the intake. A new channel can consume information the customer already supplied.
+
+That is where the compounding lives.
+
+## We rent the parts that should already be solved.
+
+Hosting should work.
+
+SMS should be delivered.
+
+Payments should clear.
+
+Databases should persist.
+
+Calendars should understand availability.
+
+There is no strategic prize for rebuilding those layers simply so they can carry our logo.
+
+The goal is to own the smallest set of infrastructure that determines the customer experience and rent everything else from providers with stronger reasons to specialize in it.
+
+That keeps engineering concentrated where Rule & Form can actually become different.
+
+## The test is replacement, not dependency.
+
+Every modern software company has dependencies. Dependency becomes dangerous when replacing a vendor means replacing the product itself.
+
+That is the architectural test.
+
+Can the website publisher change without rebuilding the customer record?
+
+Can the communications provider change without rewriting the intake?
+
+Can a new booking system consume the same structured business information?
+
+Can an integration fail without losing what the customer told us?
+
+If the answer is yes, the provider is infrastructure.
+
+If the answer is no, we accidentally gave the provider ownership of part of the product.
+
+## The stack is intentionally uneven.
+
+Rule & Form should go deep where the work is specific to Rule & Form and stay shallow where a mature provider already does the job well.
+
+That means a relatively small proprietary layer can coordinate capabilities that would be irrational for a small company to build independently.
+
+The result is not less of a product. It is the reason the product can exist at this price and still attempt something agencies and traditional software struggle to combine: deep configuration without deep per-customer labor.
+
+**Own the state. Own the logic. Own the customer experience. Rent the machinery underneath it.**
+
+### What Rule & Form owns
+
+Structured intake, the Business Record, vertical catalogs, content and website mappings, provisioning state, provider adapters, publishing orchestration, managed changes, localization rules, integration logic, and the operating decisions that connect them.
+
+### What Rule & Form rents
+
+Hosting, commodity communications infrastructure, payments, database infrastructure, cloud execution, and other capabilities where owning the underlying network or platform would add cost without adding meaningful differentiation.
