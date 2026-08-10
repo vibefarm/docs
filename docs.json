@@ -36,45 +36,58 @@
               {
                 "group": "foundation",
                 "pages": [
-                  "architecture/foundation/data-model",
-                  "architecture/foundation/naming-and-conventions",
-                  "architecture/foundation/system-map"
+                  "architecture/foundation/system-map",
+                  "architecture/foundation/stack-repo-and-environments",
+                  "architecture/foundation/domain-model-and-database-schema",
+                  "architecture/foundation/accounts-tenancy-and-identity",
+                  "architecture/foundation/naming-ids-and-conventions"
                 ]
               },
               {
-                "group": "connections",
+                "group": "integrations-and-execution",
                 "pages": [
-                  "architecture/connections/build-spec-foundation-system-map-naming-and-conventions-data-model-product-systems-business-record-capability-and-provisioning-state-business-hub-website-engine-cms-and-content-model-connections-h",
-                  "architecture/connections/provider-adapters",
-                  "architecture/connections/publishing",
-                  "architecture/connections/sync-and-projections",
-                  "untitled-page"
+                  "architecture/integrations-and-execution/provider-adapters",
+                  "architecture/integrations-and-execution/highlevel-integration",
+                  "architecture/integrations-and-execution/framer-publishing",
+                  "architecture/integrations-and-execution/webhooks-events-and-command-queue",
+                  "architecture/integrations-and-execution/sync-projections-and-reconciliation",
+                  "architecture/integrations-and-execution/workflow-and-orchestration-engine"
                 ]
               },
               {
                 "group": "control",
                 "pages": [
-                  "architecture/control/failures-and-fallbacks",
-                  "architecture/control/overrides-and-audit",
-                  "architecture/control/security-and-permissions"
+                  "architecture/control/validation-and-business-rules",
+                  "architecture/control/failures-retries-and-fallbacks",
+                  "architecture/control/overrides-locks-and-safe-regeneration",
+                  "architecture/control/security-permissions-and-secrets",
+                  "architecture/control/audit-and-observability",
+                  "architecture/control/instrumentation-and-work-logging"
                 ]
               },
               {
                 "group": "delivery",
                 "pages": [
-                  "architecture/delivery/acceptance-criteria",
+                  "architecture/delivery/mvp-boundary",
                   "architecture/delivery/build-sequence",
-                  "architecture/delivery/mvp-boundary"
+                  "architecture/delivery/acceptance-criteria",
+                  "architecture/delivery/testing-fixtures-and-demo-reset",
+                  "architecture/delivery/release-and-environment-checklist"
                 ]
               },
               {
                 "group": "product-systems",
                 "pages": [
-                  "architecture/product-systems/business-hub",
                   "architecture/product-systems/business-record",
+                  "architecture/product-systems/structured-intake-engine",
                   "architecture/product-systems/capability-and-provisioning-state",
+                  "architecture/product-systems/website-engine",
                   "architecture/product-systems/cms-content-model",
-                  "architecture/product-systems/website-engine"
+                  "architecture/product-systems/business-hub",
+                  "architecture/product-systems/lead-customer-and-job-model",
+                  "architecture/product-systems/localization-and-search-structure",
+                  "architecture/product-systems/follow-up-and-automation",
+                  "architecture/product-systems/workbench-inspect-system"
                 ]
               }
             ]
@@ -181,5 +194,57 @@
   },
   "background": {
     "decoration": "gradient"
-  }
+  },
+  "redirects": [
+    {
+      "source": "/architecture/foundation/data-model",
+      "destination": "/architecture/foundation/domain-model-and-database-schema",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/foundation/naming-and-conventions",
+      "destination": "/architecture/foundation/naming-ids-and-conventions",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/connections/build-spec-foundation-system-map-naming-and-conventions-data-model-product-systems-business-record-capability-and-provisioning-state-business-hub-website-engine-cms-and-content-model-connections-h",
+      "destination": "/architecture/integrations-and-execution/highlevel-integration",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/connections/provider-adapters",
+      "destination": "/architecture/integrations-and-execution/provider-adapters",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/connections/publishing",
+      "destination": "/architecture/integrations-and-execution/framer-publishing",
+      "permanent": true
+    },
+    {
+      "source": "/untitled-page",
+      "destination": "/architecture/integrations-and-execution/framer-publishing",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/connections/sync-and-projections",
+      "destination": "/architecture/integrations-and-execution/sync-projections-and-reconciliation",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/control/failures-and-fallbacks",
+      "destination": "/architecture/control/failures-retries-and-fallbacks",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/control/overrides-and-audit",
+      "destination": "/architecture/control/overrides-locks-and-safe-regeneration",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/control/security-and-permissions",
+      "destination": "/architecture/control/security-permissions-and-secrets",
+      "permanent": true
+    }
+  ]
 }
