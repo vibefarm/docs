@@ -46,7 +46,7 @@ Authentication or framework code may use terms such as `account` internally. Tho
 
 Build Spec pages, domain code, and schema naming should converge on **Organization** unless an external library contract requires otherwise.
 
-[Naming, IDs & Conventions](/build-spec/foundation/naming-ids-conventions)
+[Naming, IDs & Conventions](/architecture/foundation/naming-ids-and-conventions)
 
 ## Organization and Business
 
@@ -82,7 +82,7 @@ Knowing a Business ID is not authorization to act on it.
 
 This remains separate from the one-Business-to-many-Sites relationship defined in the domain model.
 
-[Domain Model & Database Schema](/build-spec/foundation/domain-model-database-schema)
+[Domain Model & Database Schema](/architecture/foundation/domain-model-and-database-schema)
 
 ## Users
 
@@ -277,9 +277,9 @@ Both are required.
 
 A provider identifier is not authorization by itself.
 
-[Provider Adapters](/build-spec/connections/provider-adapters)
+[Provider Adapters](/architecture/integrations-and-execution/provider-adapters)
 
-[Sync & Projections](/build-spec/connections/sync-projections)
+[Sync & Projections](/architecture/integrations-and-execution/sync-projections-and-reconciliation)
 
 ## Internal Rule & Form access
 
@@ -311,7 +311,7 @@ The initial product needs one internal authority level, explicit tenant selectio
 
 If impersonation is introduced, it is treated as privileged internal access with explicit audit history.
 
-[Overrides & Audit](/build-spec/control/overrides-audit)
+[Overrides & Audit](/architecture/control/overrides-locks-and-safe-regeneration)
 
 ## Customer roles
 

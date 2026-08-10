@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "sequoia",
-  "name": "Trades by Rule& Form",
+  "name": "Trades by Rule & Form",
   "colors": {
     "primary": "#157ea3",
     "light": "#eec9bc",
@@ -9,15 +9,6 @@
   },
   "favicon": "/favicon.svg",
   "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
     "tabs": [
       {
         "tab": "Home",
@@ -206,12 +197,7 @@
     "strict": true
   },
   "navbar": {
-    "links": [
-      {
-        "href": "/",
-        "label": "test"
-      }
-    ]
+    "links": []
   },
   "styling": {
     "eyebrows": "section"
@@ -242,11 +228,6 @@
     },
     {
       "source": "/architecture/connections/publishing",
-      "destination": "/architecture/integrations-and-execution/framer-publishing",
-      "permanent": true
-    },
-    {
-      "source": "/untitled-page",
       "destination": "/architecture/integrations-and-execution/framer-publishing",
       "permanent": true
     },
