@@ -1,0 +1,72 @@
+---
+title: "AI Discovery, Search & Machine Readability"
+---
+
+- **Canonical entity data:** business name, services, service areas, credentials, hours, offers, phone, locations, languages, financing, etc. generated from the Business Record.
+- **Technical search foundation:** crawlable HTML, canonical URLs, sitemap, robots directives, hreflang, metadata, semantic page structure.
+- **Structured data:** LocalBusiness/Organization, Service, FAQ where appropriate, breadcrumbs, reviews where valid, locations, contact information, `sameAs`, area served, and whatever relevant standards emerge.
+- **Listings consistency:** Google Business Profile, Bing, Apple, major directories, and future structured discovery surfaces should receive consistent Business Record data rather than becoming separate manually maintained truths.
+- **LLM accessibility:** explicitly ensure legitimate AI/search crawlers can access the intended public content. `llms.txt` and similar conventions belong here **if they prove useful**, but we should not mistake an experimental text file for the strategy.
+- **Machine-readable outputs:** JSON-LD and potentially dedicated structured endpoints/feeds generated from the same Business Record.
+- **AI recommendation readiness:** clear entity identity, specific service pages, geographic specificity, authoritative business facts, useful first-party content, citations/proof, and consistent external signals.
+- **Agent/action readiness:** architecture that could eventually let an agent determine services, locations, availability, pricing/estimates where appropriate, and initiate actions like booking.
+- **Commerce/feed readiness:** not particularly important for a plumber today, but the architecture should be capable of supplying structured catalogs/feeds when a vertical needs them. **Shopify is exactly the extreme example worth studying here.**
+- **Monitoring:** schema errors, crawlability, listing inconsistencies, AI/search referral traffic, citations/recommendations, and periodic tests against major assistants/search systems.
+- **No bullshit:** we never promise “rank #1 in ChatGPT.” We promise that we will keep customer sites **technically and structurally ready for how discovery is evolving.**
+
+And there's a really important connection to our architecture:
+
+```text
+```
+
+```text
+Business Record
+      ↓
+Website content
+      ↓
+Structured data
+      ↓
+Listings
+      ↓
+Search engines
+      ↓
+LLMs / AI search
+      ↓
+Future agents / actions / commerce
+```
+
+**Same record. Multiple outputs.**
+
+That is extremely Rule & Form.
+
+It also strengthens the Business Record thesis because now we're not maintaining structured business information merely to make site production cheaper. We're creating a canonical representation of a contractor that can be emitted into **every discovery system that matters now or emerges later.**
+
+### I would also surface it publicly
+
+Probably:
+
+**The Machine → AI Discovery & Compatibility**
+
+That page is the accelerator/business explanation.
+
+The **Build Spec page** says precisely how we implement it.
+
+The public page says something closer to:
+
+> Search is changing from ten blue links to answers, recommendations, comparisons, and eventually actions. Rule & Form should not require every contractor to understand each new discovery surface as it appears. We maintain the underlying business record and make the website and its data legible to search engines, AI systems, directories, and whatever comes next.
+
+That is a **core managed-service promise**:
+
+**The contractor doesn't need to learn what ChatGPT, Google, Perplexity, Gemini, Apple, or the next platform wants. Keeping the business compatible with modern discovery is our job.**
+
+And your Shopify instinct is right. The lesson isn't “we should copy Shopify shopping.” It's how far this eventually goes. The endpoint isn't merely having a website that an AI can crawl. The endpoint is potentially:
+
+**understand business → recommend business → inspect offering → determine availability → take action.**
+
+For home services, someday that could mean:
+
+> “Find me a highly rated Spanish-speaking plumber serving north Dallas who does tankless water heaters and can come Thursday.”
+
+An agent should be able to understand that one of our customers qualifies **because Rule & Form has already structured and exposed those facts correctly.**
+
+That's not SEO garnish. **That's future distribution infrastructure.**
