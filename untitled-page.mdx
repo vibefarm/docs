@@ -1,0 +1,26 @@
+---
+title: "Provider Ownership & Migration Plan"
+---
+
+| Capability | Rule & Form owns | Provider now | Likely replacement | Why rent it now |
+| :-- | :-- | :-- | :-- | :-- |
+| Business Record | Entire model \+ history | None | None | Core IP |
+| Forms | UI, validation, lead creation | GHL receives mapped data | None | Easy enough to own now |
+| Customers / Leads / Jobs | Canonical records | GHL mapping where needed | None | Must not depend on GHL schema |
+| Business Hub | Entire UI | GHL supplies some events/data | None | This is the product |
+| Inbox UI | Entire UI | GHL conversations/SMS | Twilio/Telnyx | Telecom is expensive to recreate |
+| Phone numbers | Configuration/state | GHL | Twilio/Telnyx | Number provisioning/routing already solved |
+| Calling / voicemail | Experience \+ status | GHL | Twilio/Telnyx | Telecom complexity |
+| SMS | Experience \+ rules | GHL | Twilio/Telnyx | Delivery/compliance infrastructure |
+| Booking UI | Entire UI | GHL Calendar | Nylas | Availability/calendar plumbing already solved |
+| Calendar | Configuration/state | GHL | Nylas | OAuth/free-busy/timezones are annoying |
+| Automations | Rules and intended behavior | Selected GHL workflows | Inngest | GHL gives us working machinery immediately |
+| Website generation | Rules/content/templates | Framer | Future publisher if required | Framer already solves rendering/hosting |
+| Publishing | Orchestration \+ state | Framer API | Future adapter | Avoid building hosting/publishing infrastructure |
+| Payments | Rule & Form experience | Stripe | Another payments provider if needed | Commodity |
+| Email | Rule & Form experience | GHL initially if useful | Resend | Not worth solving early |
+| Reviews | Product logic | GHL initially if useful | Google APIs | Not core to V1 |
+
+This is basically the architecture we've already decided. The reason we're **not moving everything off GHL now** is also already well stated in the notes: GHL gives us phone, SMS, calling, conversations, calendar, workflows and an administrative fallback immediately, which lets us build the actual Rule & Form product without spending the accelerator build becoming a telecom and calendar infrastructure company.
+
+That administrative fallback is particularly valuable for the first customers. If our Inbox screen has a bug, we can still inspect GHL. If phone routing is behaving strangely, we have an existing provider console underneath ours.

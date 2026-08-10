@@ -89,6 +89,12 @@
                   "architecture/product-systems/follow-up-and-automation",
                   "architecture/product-systems/workbench-inspect-system"
                 ]
+              },
+              {
+                "group": "connections",
+                "pages": [
+                  "untitled-page"
+                ]
               }
             ]
           },
@@ -174,7 +180,7 @@
         ]
       },
       {
-        "tab": "PRIVATE",
+        "tab": "NOTES",
         "hidden": true,
         "pages": [
           "untitled-page-4",
