@@ -117,7 +117,8 @@
             "pages": [
               "economics/why-299-can-work",
               "economics/why-human-work-should-fall",
-              "economics/what-we-measure"
+              "economics/what-we-measure",
+              "untitled-page-2"
             ]
           },
           {
@@ -166,9 +167,25 @@
               "evidence/integration-matrix",
               "evidence/deployment-and-support-ledger",
               "evidence/cost-of-goods-sources",
-              "evidence/objection-register"
+              "evidence/objection-register",
+              "untitled-page-3"
             ]
           }
+        ]
+      },
+      {
+        "tab": "PRIVATE",
+        "hidden": true,
+        "pages": [
+          "untitled-page-4",
+          "untitled-page-5"
+        ]
+      },
+      {
+        "tab": "PITCH DECK",
+        "hidden": true,
+        "pages": [
+          "untitled-page-6"
         ]
       }
     ]
