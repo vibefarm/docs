@@ -165,6 +165,20 @@
     "dark": "/logo/dark.svg"
   },
   "appearance": {
-    "default": "dark"
+    "default": "light"
+  },
+  "navbar": {
+    "links": [
+      {
+        "href": "/",
+        "label": "test"
+      }
+    ]
+  },
+  "styling": {
+    "eyebrows": "section"
+  },
+  "background": {
+    "decoration": "gradient"
   }
 }
