@@ -21,144 +21,139 @@
     "tabs": [
       {
         "tab": "Home",
-        "anchors": [
+        "groups": [
           {
-            "anchor": "Untitled Anchor",
-            "groups": [
+            "group": "Start Here",
+            "pages": [
+              "start-here/what-rule-and-form-is",
+              "start-here/the-problem",
+              "start-here/see-it-working"
+            ]
+          },
+          {
+            "group": "Build Spec",
+            "pages": [
               {
-                "group": "Start Here",
+                "group": "foundation",
                 "pages": [
-                  "start-here/what-rule-and-form-is",
-                  "start-here/the-problem",
-                  "start-here/see-it-working"
+                  "architecture/foundation/data-model",
+                  "architecture/foundation/naming-and-conventions",
+                  "architecture/foundation/system-map"
                 ]
               },
               {
-                "group": "Build Spec",
+                "group": "connections",
                 "pages": [
-                  {
-                    "group": "foundation",
-                    "pages": [
-                      "architecture/foundation/data-model",
-                      "architecture/foundation/naming-and-conventions",
-                      "architecture/foundation/system-map"
-                    ]
-                  },
-                  {
-                    "group": "connections",
-                    "pages": [
-                      "architecture/connections/build-spec-foundation-system-map-naming-and-conventions-data-model-product-systems-business-record-capability-and-provisioning-state-business-hub-website-engine-cms-and-content-model-connections-h",
-                      "architecture/connections/provider-adapters",
-                      "architecture/connections/publishing",
-                      "architecture/connections/sync-and-projections",
-                      "untitled-page"
-                    ]
-                  },
-                  {
-                    "group": "control",
-                    "pages": [
-                      "architecture/control/failures-and-fallbacks",
-                      "architecture/control/overrides-and-audit",
-                      "architecture/control/security-and-permissions"
-                    ]
-                  },
-                  {
-                    "group": "delivery",
-                    "pages": [
-                      "architecture/delivery/acceptance-criteria",
-                      "architecture/delivery/build-sequence",
-                      "architecture/delivery/mvp-boundary"
-                    ]
-                  },
-                  {
-                    "group": "product-systems",
-                    "pages": [
-                      "architecture/product-systems/business-hub",
-                      "architecture/product-systems/business-record",
-                      "architecture/product-systems/capability-and-provisioning-state",
-                      "architecture/product-systems/cms-content-model",
-                      "architecture/product-systems/website-engine"
-                    ]
-                  }
+                  "architecture/connections/build-spec-foundation-system-map-naming-and-conventions-data-model-product-systems-business-record-capability-and-provisioning-state-business-hub-website-engine-cms-and-content-model-connections-h",
+                  "architecture/connections/provider-adapters",
+                  "architecture/connections/publishing",
+                  "architecture/connections/sync-and-projections",
+                  "untitled-page"
                 ]
               },
               {
-                "group": "Product Decisions",
+                "group": "control",
                 "pages": [
-                  "product-decisions/structured-intake-as-economic-architecture",
-                  "product-decisions/existing-site-migration",
-                  "product-decisions/design-directions",
-                  "product-decisions/progressive-provisioning",
-                  "product-decisions/managed-changes-and-safe-regeneration",
-                  "product-decisions/exceptions-become-product-logic"
+                  "architecture/control/failures-and-fallbacks",
+                  "architecture/control/overrides-and-audit",
+                  "architecture/control/security-and-permissions"
                 ]
               },
               {
-                "group": "The Machine",
+                "group": "delivery",
                 "pages": [
-                  "the-machine/how-it-works",
-                  "the-machine/business-record-and-structured-intake",
-                  "the-machine/website-system",
-                  "the-machine/provisioning-and-business-hub"
+                  "architecture/delivery/acceptance-criteria",
+                  "architecture/delivery/build-sequence",
+                  "architecture/delivery/mvp-boundary"
                 ]
               },
               {
-                "group": "Why The Economics Work",
+                "group": "product-systems",
                 "pages": [
-                  "economics/why-299-can-work",
-                  "economics/why-human-work-should-fall",
-                  "economics/what-we-measure"
-                ]
-              },
-              {
-                "group": "The Operating Layer",
-                "pages": [
-                  "operating-layer/what-we-own-vs-rent",
-                  "operating-layer/why-highlevel-is-infrastructure",
-                  "operating-layer/fits-around-existing-software"
-                ]
-              },
-              {
-                "group": "Distribution",
-                "pages": [
-                  "distribution/direct-sales-is-the-learning-engine",
-                  "distribution/channel-is-the-economic-bet",
-                  "distribution/lone-star-and-replication"
-                ]
-              },
-              {
-                "group": "Why This Gets Large",
-                "pages": [
-                  "why-this-gets-large/trades-alone-are-enough",
-                  "why-this-gets-large/the-three-curves",
-                  "why-this-gets-large/what-compounds"
-                ]
-              },
-              {
-                "group": "Competition",
-                "pages": [
-                  "competition/the-real-alternatives",
-                  "competition/why-rule-and-form-is-different"
-                ]
-              },
-              {
-                "group": "What Remains To Prove",
-                "pages": [
-                  "what-remains/the-risks-that-still-matter",
-                  "what-remains/next-90-days",
-                  "what-remains/the-ask"
-                ]
-              },
-              {
-                "group": "Evidence & Diligence",
-                "pages": [
-                  "evidence/live-implementations",
-                  "evidence/integration-matrix",
-                  "evidence/deployment-and-support-ledger",
-                  "evidence/cost-of-goods-sources",
-                  "evidence/objection-register"
+                  "architecture/product-systems/business-hub",
+                  "architecture/product-systems/business-record",
+                  "architecture/product-systems/capability-and-provisioning-state",
+                  "architecture/product-systems/cms-content-model",
+                  "architecture/product-systems/website-engine"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Product Decisions",
+            "pages": [
+              "product-decisions/structured-intake-as-economic-architecture",
+              "product-decisions/existing-site-migration",
+              "product-decisions/design-directions",
+              "product-decisions/progressive-provisioning",
+              "product-decisions/managed-changes-and-safe-regeneration",
+              "product-decisions/exceptions-become-product-logic"
+            ]
+          },
+          {
+            "group": "The Machine",
+            "pages": [
+              "the-machine/how-it-works",
+              "the-machine/business-record-and-structured-intake",
+              "the-machine/website-system",
+              "the-machine/provisioning-and-business-hub"
+            ]
+          },
+          {
+            "group": "Why The Economics Work",
+            "pages": [
+              "economics/why-299-can-work",
+              "economics/why-human-work-should-fall",
+              "economics/what-we-measure"
+            ]
+          },
+          {
+            "group": "The Operating Layer",
+            "pages": [
+              "operating-layer/what-we-own-vs-rent",
+              "operating-layer/why-highlevel-is-infrastructure",
+              "operating-layer/fits-around-existing-software"
+            ]
+          },
+          {
+            "group": "Distribution",
+            "pages": [
+              "distribution/direct-sales-is-the-learning-engine",
+              "distribution/channel-is-the-economic-bet",
+              "distribution/lone-star-and-replication"
+            ]
+          },
+          {
+            "group": "Why This Gets Large",
+            "pages": [
+              "why-this-gets-large/trades-alone-are-enough",
+              "why-this-gets-large/the-three-curves",
+              "why-this-gets-large/what-compounds"
+            ]
+          },
+          {
+            "group": "Competition",
+            "pages": [
+              "competition/the-real-alternatives",
+              "competition/why-rule-and-form-is-different"
+            ]
+          },
+          {
+            "group": "What Remains To Prove",
+            "pages": [
+              "what-remains/the-risks-that-still-matter",
+              "what-remains/next-90-days",
+              "what-remains/the-ask"
+            ]
+          },
+          {
+            "group": "Evidence & Diligence",
+            "pages": [
+              "evidence/live-implementations",
+              "evidence/integration-matrix",
+              "evidence/deployment-and-support-ledger",
+              "evidence/cost-of-goods-sources",
+              "evidence/objection-register"
             ]
           }
         ]
