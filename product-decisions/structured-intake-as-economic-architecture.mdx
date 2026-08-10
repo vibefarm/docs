@@ -1,0 +1,63 @@
+---
+title: "Structured Intake as Economic Architecture"
+sidebarTitle: "Intake Architecture"
+description: "Why Rule & Form treats structured intake not just as a UX feature but as the core economic architecture of the product."
+---
+
+# Every website project starts by rediscovering the customer. That cost never goes down.
+
+Someone interviews the owner, takes notes, decides what matters, writes the content, organizes the pages, and moves those decisions into a site. Then the next customer arrives and it starts over. The work is real, it is skilled, and none of it accumulates.
+
+Structured intake is how we stop paying it twice.
+
+## Contractors should not have to write their own website.
+
+Instead of asking a plumber to describe every service in a blank text box, we present a researched catalog and let them recognize their business rather than compose it. They select Drain Cleaning, Water Heater Repair, Repiping — then add anything we missed. The same pattern covers customer types, service areas, credentials, availability, warranties, financing, and existing software.
+
+Intake is also conditional. A plumber who selects water heater work gets asked about tank versus tankless. A company that doesn't offer it never sees the question. That keeps the experience small while the underlying data stays detailed.
+
+Freeform input remains available where reality demands it. It is the exception, not the interface.
+
+## The catalog is the asset, not the questionnaire.
+
+A selection is worth more than a sentence. Water Heater Repair stops being text buried in a form and becomes a known entity with a stable identifier — something that can drive pages, navigation, forms, metadata, internal links, and every future change without anyone re-reading a questionnaire to find out what the business does.
+
+Stable identifiers also make the catalog safe to improve. Display labels can change without breaking published sites. Regional variations resolve to the same entity through aliases. And canonical terms are translated once, at the catalog level, so Spanish-language generation starts from correct vocabulary for every plumber we ever onboard instead of translating the same eight services five hundred times.
+
+What a company offers and what it wants more of are also separate facts. A contractor may list twenty services and want three. We capture both, so the site can represent the whole business without giving every service equal weight.
+
+## Intake creates the business record.
+
+The output is not a questionnaire response handed to a designer. It is a structured representation of the company — identity, services, priorities, service areas, hours, credentials, reviews, projects, photography, contact details, software connections — with everything in a defined place.
+
+That record stays available for controlled edits afterward. We can correct it, the customer can update approved fields, and the site follows. The website is one output from it, not the place the information lives.
+
+## AI drafts. People approve. Approved work is never overwritten.
+
+We don't need a model to check whether a required phone number exists. Workflow stays deterministic: the application knows which questions apply, what's missing, and when there's enough to proceed.
+
+AI is used where interpretation actually earns its cost — pulling facts from an existing website, reading unusual custom answers, drafting service descriptions, generating metadata, flagging claims that need review. Everything it produces begins as a draft and moves to approved only when a person says so.
+
+**Approved edits survive regeneration.** Generated content can be replaced when the system improves. Anything a person has approved or changed is preserved. Without that rule, every improvement quietly destroys the last round of human work, and the cost per customer stops falling — which is the entire point of building this way.
+
+## One engine, many trades.
+
+The engine owns the reusable behavior: progression, validation, selection, custom answers, conditional questions, prioritization, uploads, review, save and resume. Vertical configuration supplies the domain knowledge: services, terminology, aliases, credentials, exclusions, content rules.
+
+Plumbing proves the engine. HVAC extends its vocabulary. Electrical, roofing, and remodeling follow the same path — research the category, encode what's different, test it. Entering a trade is a research problem, not a new onboarding product.
+
+The catalog improves the same way. Custom answers are preserved and reviewed, and recurring ones become canonical entries. Common answers get faster, edge cases stay possible, and repeated edge cases become product knowledge.
+
+## What has to be true for any of this to matter.
+
+None of the above is an argument that people leave website production. It's an argument that human judgment stops being spent on work that can be encoded once — the reviewer starts with organized information instead of reconstructing a company from calls, emails, and notes.
+
+Whether that actually happens is measurable, and we instrument it from the first deployment: how long intake takes, how many human review minutes each site costs, and what share of answers resolve through curated choices rather than custom input. Regeneration success joins the list as soon as regeneration is real.
+
+If those numbers don't move as the installed base grows, we've built a well-organized agency. If they do, we've built something that gets cheaper to run as it gets larger.
+
+That is the number the rest of this company depends on.
+
+<Card title="How the record becomes a site" icon="arrow-right" href="/product-decisions/generation">
+  Business Record \+ Page Recipe \+ Style Pack, published through provider adapters so today's vendor doesn't define tomorrow's product.
+</Card>
