@@ -165,7 +165,8 @@
     "dark": "/logo/dark.svg"
   },
   "appearance": {
-    "default": "light"
+    "default": "light",
+    "strict": true
   },
   "navbar": {
     "links": [
