@@ -1,3 +1,966 @@
 ---
 title: "Workflow & Orchestration Engine"
+description: "How Rule & Form turns durable intent into resumable multi-step execution without making the workflow runner the source of truth."
 ---
+
+---
+
+## title: "Workflow & Orchestration Engine"<br />description: "How Rule & Form turns durable intent into resumable multi-step execution without making the workflow runner the source of truth."
+
+Some Rule & Form work cannot finish inside one request.
+
+Publishing waits on Framer. Provisioning waits on providers and customer actions. Commands retry. Reconciliation runs later. A process can fail halfway through without making the work disappear.
+
+The Workflow & Orchestration Engine coordinates that work.
+
+```text
+Rule & Form intent
+        ↓
+durable domain state
+        ↓
+workflow wake-up
+        ↓
+Inngest
+        ↓
+checkpointed steps
+        ↓
+commands / waits / verification
+        ↓
+durable result
+```
+
+**PostgreSQL owns what must happen and what happened. Inngest owns durable execution of the steps between them.**
+
+## The boundary
+
+The orchestration layer coordinates work. It does not absorb the responsibilities of the systems it invokes.
+
+| System | Owns |
+| :-- | :-- |
+| Domain model | Business intent and canonical state |
+| Provider Events | Durable inbound provider facts |
+| Provider Commands | Durable outbound provider intent |
+| Workflow engine | Sequencing, waits, retries, resumption |
+| Provider Adapters | Provider-specific execution |
+| Capability resolver | Customer-facing readiness |
+| Reconciliation | Expected-versus-actual provider state |
+| Workbench | Inspection and operational explanation |
+
+A workflow may move several of these systems forward.
+
+It does not become their source of truth.
+
+---
+
+## Inngest is the execution provider
+
+V1 uses **Inngest** for durable workflow execution.
+
+Its useful responsibilities include:
+
+```text
+checkpointed steps
+step retries
+durable waits
+scheduled continuation
+event-triggered execution
+failure handling
+concurrency controls
+```
+
+Those capabilities solve execution problems.
+
+They do not change Rule & Form ownership.
+
+```text
+Inngest run
+    execution state
+
+Publishing Run
+Provider Command
+Provisioning Run
+Provider Event
+Capability State
+    Rule & Form state
+```
+
+If Inngest were replaced later, these domain concepts should remain valid.
+
+**The runner can change. The work cannot lose its identity.**
+
+---
+
+## Durable intent comes first
+
+Never rely on this sequence:
+
+```text
+customer action
+      ↓
+send workflow event
+      ↓
+hopefully persist work later
+```
+
+If the application commits the customer action but fails before the workflow receives the event, the work can disappear.
+
+Prefer:
+
+```text
+domain transaction
+      ↓
+persist domain change
+persist Run / Command / durable intent
+      ↓
+COMMIT
+      ↓
+wake workflow
+```
+
+The durable record is created before asynchronous execution depends on it.
+
+### The wake-up is not the queue record
+
+An Inngest event can wake execution.
+
+It is not the sole proof that execution is required.
+
+```text
+Provider Command
+status = queued
+        ↓
+commit
+
+        ↓
+
+send wake-up event
+```
+
+If event delivery fails after the commit:
+
+```text
+Provider Command
+still queued
+        ↓
+recovery dispatcher
+        ↓
+workflow wakes later
+```
+
+**The wake-up mechanism may fail. The intent survives.**
+
+---
+
+## Recovery dispatcher
+
+Rule & Form needs a recovery path for durable work whose normal wake-up did not occur.
+
+Conceptually:
+
+```text
+find eligible work
+
+queued
+retry due
+lease expired
+stalled where safely recoverable
+
+        ↓
+
+attempt wake-up
+        ↓
+normal workflow path
+```
+
+The dispatcher does not create new intent.
+
+It rediscovers intent that already exists.
+
+This closes the gap between:
+
+```text
+database commit
+        ↓
+workflow scheduler
+```
+
+without pretending those systems participate in one distributed transaction.
+
+Duplicate wake-ups must be harmless.
+
+The durable record determines whether work is still eligible to execute.
+
+---
+
+## Workflow Runs
+
+Long-running domain operations retain Rule & Form identity outside Inngest.
+
+Examples:
+
+```text
+Publishing Run
+Provisioning Run
+Reconciliation Run
+future managed automation run
+```
+
+A Run should retain enough state to answer:
+
+```text
+What operation is this?
+
+Which Organization owns it?
+
+Which Business / Site / entity does it affect?
+
+What triggered it?
+
+Which version of the workflow is executing?
+
+What state is it in?
+
+What is it waiting for?
+
+What failed?
+
+Which commands or events belong to it?
+
+When did it start and finish?
+```
+
+The physical schema may vary by Run type.
+
+Do not build one giant generic workflow table merely because several processes are asynchronous.
+
+Use shared execution conventions where useful while preserving domain-specific Runs where the business meaning differs.
+
+---
+
+## Workflow definition version
+
+A long-running operation may survive application deployments.
+
+Its execution contract therefore needs an identifiable workflow definition or equivalent version when code changes could alter its meaning.
+
+```text
+Publishing Run
+
+workflow
+framer.publish
+
+workflow_version
+3
+```
+
+A new deployment must not silently reinterpret a partially completed workflow as a different process.
+
+Minor compatible implementation changes may remain within one version.
+
+Material changes to step ordering, required inputs, or recovery semantics should produce a new workflow version.
+
+**Execution history must remain explainable after the code moves on.**
+
+---
+
+## Steps are recovery boundaries
+
+A workflow should be divided where successful work becomes worth preserving.
+
+Example:
+
+```text
+Publishing Run
+
+1. preflight
+2. resolve assets
+3. synchronize CMS
+4. synchronize localization
+5. publish
+6. wait for deployment
+7. inspect deployment
+8. promote if required
+9. verify production
+10. record Published Snapshot
+```
+
+If step 7 fails, successful steps before it should not be repeated merely because execution resumed.
+
+A good step has one clear responsibility and an observable result.
+
+Avoid:
+
+```text
+step: publish-everything
+
+allocate
+upload
+write CMS
+localize
+publish
+verify
+update database
+```
+
+Prefer boundaries that let the system know exactly what already succeeded.
+
+### Side effects belong inside durable steps
+
+Network calls, database mutations, provider reads, waits, and other non-deterministic work belong inside durable execution boundaries.
+
+Do not perform meaningful side effects in workflow code that can replay without protection.
+
+Completed work should be checkpointed before later work depends on it.
+
+---
+
+## Provider mutations use Provider Commands
+
+The workflow engine does not create a second outbound integration path.
+
+For Rule & Form initiated provider mutations:
+
+```text
+workflow
+    ↓
+create / claim Provider Command
+    ↓
+command execution
+    ↓
+Provider Adapter
+    ↓
+provider
+```
+
+Do not do this:
+
+```text
+workflow
+    ↓
+call HighLevel directly
+
+while
+
+Provider Commands
+    ↓
+call HighLevel separately
+```
+
+That would create two mutation paths with different retry, ordering, idempotency, and audit behavior.
+
+The command queue owns provider-side-effect semantics.
+
+The workflow owns the larger operation that required the command.
+
+### Read and verify separately
+
+Provider reads may occur through adapters when a workflow needs to verify actual state.
+
+```text
+desired state
+    ↓
+Provider Command
+    ↓
+mutation
+
+later
+
+workflow / reconciliation
+    ↓
+adapter read
+    ↓
+actual state
+    ↓
+verification
+```
+
+A successful mutation request is not always proof that the intended external result now exists.
+
+---
+
+## Generic retries stop at the provider boundary
+
+Automatic workflow retries are appropriate for transient failures when repeating the step is known to be safe.
+
+Examples:
+
+```text
+database connection failure
+temporary internal service failure
+safe provider read
+checkpoint write failure
+```
+
+Provider mutations require stricter semantics.
+
+Suppose Rule & Form sends an SMS command:
+
+```text
+send request
+      ↓
+provider accepts message
+      ↓
+response connection dies
+      ↓
+Rule & Form does not know outcome
+```
+
+That is not an ordinary retryable error.
+
+It is:
+
+```text
+Provider Command
+    uncertain
+```
+
+The workflow must not blindly invoke the mutation again.
+
+```text
+uncertain
+    ↓
+reconcile outcome
+    ↓
+confirm success
+or
+prove safe to retry
+```
+
+**Workflow retry policy never overrides Provider Command idempotency and uncertainty rules.**
+
+---
+
+## Failure classification
+
+Not every failure means the same thing.
+
+### Transient
+
+The operation is still valid and repeating it is safe.
+
+```text
+temporary network failure
+provider unavailable
+database lock
+rate limit
+```
+
+Result:
+
+```text
+retry / wait
+```
+
+### Permanent
+
+The operation cannot succeed without changing its inputs or state.
+
+```text
+invalid configuration
+deleted required resource
+unsupported mapping
+failed validation
+revoked authorization requiring customer action
+```
+
+Result:
+
+```text
+fail or block
+surface required action
+```
+
+### Uncertain
+
+An external side effect may already have happened.
+
+```text
+request left Rule & Form
+result unknown
+```
+
+Result:
+
+```text
+do not repeat blindly
+reconcile first
+```
+
+Adapters report provider-specific information.
+
+The workflow layer decides how execution proceeds.
+
+---
+
+## Waiting belongs in orchestration
+
+Workers should not sit inside long sleeps or polling loops.
+
+Avoid:
+
+```text
+call provider
+sleep 30 seconds
+call provider
+sleep 30 seconds
+call provider
+```
+
+Prefer:
+
+```text
+call provider
+      ↓
+durable wait
+      ↓
+resume
+      ↓
+inspect state
+```
+
+Provider rate-limit information follows the same pattern.
+
+```text
+adapter
+    ↓
+retry-after / retryable result
+    ↓
+workflow schedules continuation
+```
+
+**Do not sleep inside provider adapters.**
+
+This keeps provider code small and keeps timing policy in the layer that owns time.
+
+---
+
+## Waiting for external state
+
+Some workflows wait for events. Others poll provider state.
+
+Both are valid when chosen deliberately.
+
+```text
+A2P approval
+deployment completion
+customer authorization
+DNS propagation
+provider processing
+```
+
+The durable Rule & Form state remains authoritative even when an external event wakes the workflow.
+
+A safe pattern is:
+
+```text
+resume signal
+      ↓
+read current Rule & Form state
+      ↓
+read provider state if required
+      ↓
+decide next step
+```
+
+Do not assume the wake-up itself proves the final state.
+
+This also protects against timing races where the external change occurs before the workflow begins waiting for its notification.
+
+**Signals wake execution. State decides execution.**
+
+---
+
+## Concurrency
+
+Workflow concurrency controls protect capacity.
+
+They are not the only correctness mechanism.
+
+### Publishing serialization
+
+Framer Publishing requires at most one active Publishing Run per Site.
+
+That invariant belongs in Rule & Form state.
+
+```text
+Site
+    ↓
+active Publishing Run
+        one maximum
+```
+
+A second request is queued, rejected, or merged according to the publishing contract.
+
+Do not rely only on workflow-runner concurrency configuration to enforce this invariant.
+
+A workflow can spend long periods waiting while no code is executing.
+
+### Provider throughput
+
+Workflow concurrency limits are useful for:
+
+```text
+provider rate protection
+database pressure
+tenant fairness
+expensive background work
+```
+
+They supplement the domain model.
+
+They do not replace:
+
+```text
+database constraints
+leases
+ordering keys
+command eligibility
+tenant ownership checks
+```
+
+### Command ordering
+
+Provider Command ordering remains owned by the command queue.
+
+If command B must not pass command A:
+
+```text
+A
+blocked / retrying / uncertain
+        ↓
+B
+must wait
+```
+
+Do not recreate command ordering indirectly through workflow timing.
+
+---
+
+## Leases and worker death
+
+Execution can stop anywhere.
+
+```text
+claim work
+    ↓
+worker dies
+```
+
+No durable operation should remain permanently owned by a dead worker.
+
+Where Rule & Form records use leases or claims, those claims expire and become recoverable according to the owning system's rules.
+
+Recovery must distinguish:
+
+```text
+work never attempted
+        safe to retry
+
+work definitely failed
+        retry according to policy
+
+external mutation outcome unknown
+        uncertain, reconcile first
+```
+
+A lease expiry does not prove that a provider side effect did not happen.
+
+---
+
+## Cancellation is not rollback
+
+Stopping future workflow execution does not undo completed side effects.
+
+```text
+step 1 complete
+step 2 complete
+step 3 external mutation complete
+step 4 waiting
+
+        ↓ cancel
+
+steps 1-3 still happened
+```
+
+If compensation is required, it is explicit business logic.
+
+There is no generic distributed rollback.
+
+For publishing, this means a failed or cancelled attempt does not move the Site's current publication pointer. The previous verified Published Snapshot remains current until a new publication is verified.
+
+---
+
+## Provider Events
+
+Inbound provider events follow their existing durable path before workflow processing.
+
+```text
+provider webhook
+      ↓
+verify
+resolve tenant
+deduplicate
+persist Provider Event
+acknowledge
+
+      ↓
+
+workflow processing
+```
+
+The webhook request does not remain open while downstream work executes.
+
+If asynchronous processing fails, the Provider Event still exists.
+
+A later retry or recovery process can continue from the persisted event.
+
+**Receive first. Process second.**
+
+---
+
+## Reconciliation
+
+Workflows do not make webhooks perfectly reliable and do not make provider state transactional.
+
+Reconciliation remains necessary.
+
+```text
+expected Rule & Form state
+        ↕
+provider actual state
+        ↓
+reconciliation
+        ↓
+repair projection / command state
+        ↓
+resume affected workflow where required
+```
+
+Examples include:
+
+```text
+uncertain Provider Command
+missed provider event
+stale mapping
+deployment state changed externally
+connection repaired
+phone resource removed
+```
+
+The workflow engine can schedule and execute reconciliation work.
+
+The reconciliation system owns the comparison and correction rules.
+
+---
+
+## Tenant scope
+
+Every workflow begins with explicit tenant context.
+
+At minimum:
+
+```text
+organization_id
+business_id where applicable
+subject identity
+```
+
+The workflow never treats:
+
+```text
+Inngest run ID
+Framer project ID
+HighLevel locationId
+provider event ID
+```
+
+as tenant authority.
+
+Before tenant-owned state is read or mutated, the normal Organization boundary still applies.
+
+Background work receives no exemption from tenancy rules.
+
+---
+
+## Demo isolation
+
+Demo workflows use the same orchestration code as production.
+
+They operate on the isolated demo Organization and permitted demo provider resources.
+
+```text
+Demo Organization
+        ↓
+same workflow
+same commands
+same adapters
+same resolver
+
+        ↓
+demo resources only
+```
+
+An environment or demo configuration error must fail closed rather than allow a demo workflow to reach a production customer provider resource.
+
+---
+
+## Observability
+
+Workbench should explain Rule & Form execution without requiring the operator to reconstruct it from Inngest logs.
+
+Example:
+
+```text
+PUBLISHING RUN 47
+
+STATUS
+Waiting
+
+SITE
+Johnson Plumbing
+
+WORKFLOW
+framer.publish v3
+
+INPUTS
+Business Record v18
+Content State v12
+Template v4
+Mapping v7
+
+STEPS
+Preflight             Complete
+Assets                Complete
+CMS                   Complete
+Localization          Complete
+Publish               Complete
+Deployment            Waiting
+
+COMMANDS
+...
+
+LAST ACTIVITY
+...
+
+NEXT
+Check deployment
+```
+
+For a failure:
+
+```text
+FAILED STEP
+Synchronize calendar
+
+CLASSIFICATION
+Authorization required
+
+CAPABILITY
+Booking → Action needed
+
+NEXT ACTION
+Reconnect calendar
+```
+
+Inngest's operational tooling remains useful for infrastructure debugging.
+
+It is not the Rule & Form audit model.
+
+---
+
+## V1 boundary
+
+```text
+- Inngest execution
+- durable Rule & Form Run state where the domain requires it
+- transactional creation of durable intent before workflow wake-up
+- recovery dispatcher for missed or stalled wake-ups
+- duplicate-safe workflow activation
+- checkpointed multi-step execution
+- step-level transient retries
+- durable waits
+- explicit workflow definition version where required
+- Provider Command handoff for outbound mutations
+- preservation of `uncertain` provider-command semantics
+- provider Retry-After / rescheduling support
+- Publishing Run orchestration
+- Provisioning Run orchestration
+- asynchronous Provider Event processing
+- reconciliation execution
+- one-active-Publishing-Run-per-Site invariant
+- tenant-scoped background execution
+- failure classification
+- Workbench-readable execution state
+- demo isolation
+```
+
+```text
+- a customer-facing workflow builder
+- arbitrary DAG authoring
+- general-purpose BPM software
+- arbitrary customer automation scripting
+- exactly-once execution claims
+- distributed transactions across providers
+- automatic compensation for every side effect
+- sophisticated workflow migration tooling
+- multi-region custom orchestration infrastructure
+- replacing Inngest with an internal workflow engine
+- putting every background task behind one universal Run model
+```
+
+---
+
+## Acceptance conditions
+
+Workflow & Orchestration is working when:
+
+- A domain transaction can commit durable work even if the immediate Inngest wake-up fails.
+- The recovery dispatcher can rediscover that work and wake it later.
+- Duplicate wake-ups cannot duplicate one logical operation.
+- A completed workflow step does not repeat merely because a later step failed.
+- A long-running workflow can wait without holding an application request open.
+- A transient safe failure retries without restarting unrelated completed work.
+- Provider rate-limit timing is handled by orchestration rather than adapter sleeps.
+- An uncertain provider mutation is reconciled before any unsafe retry.
+- A workflow cannot bypass the Provider Command path for an outbound mutation covered by that contract.
+- A second Publishing Run cannot interleave with an active run for the same Site.
+- Workflow-runner concurrency is not the sole enforcement of that publishing invariant.
+- Worker death cannot permanently strand safely recoverable work.
+- Cancellation does not pretend completed external side effects rolled back.
+- A persisted Provider Event survives failure of its asynchronous processor.
+- A failed Publishing Run leaves the previous verified Published Snapshot current.
+- Every background operation remains explicitly scoped to one Organization.
+- Demo execution cannot reach production customer provider resources.
+- Workbench can show what ran, what completed, what is waiting, what failed, and what should happen next.
+- Restarting or redeploying application infrastructure does not erase durable Rule & Form intent.
+
+---
+
+## Foundation rules
+
+1. **PostgreSQL owns durable business intent and results. Inngest owns execution.**
+2. **No required work exists only as a workflow-runner event or run.**
+3. **Persist intent before depending on asynchronous wake-up.**
+4. **The wake-up mechanism may fail. The intent survives.**
+5. **Recovery rediscovers existing work; it does not invent new intent.**
+6. **Workflows are divided at meaningful recovery boundaries.**
+7. **Completed steps are preserved across later retries.**
+8. **Provider mutations use the durable Provider Command contract.**
+9. **Generic workflow retries never bypass command idempotency, ordering, or** `uncertain `**state.**
+10. **Signals wake execution. State decides execution.**
+11. **Waiting and rescheduling belong to orchestration, not provider adapters.**
+12. **Concurrency limits protect throughput; domain invariants protect correctness.**
+13. **One active Publishing Run per Site is a Rule & Form invariant.**
+14. **Cancellation is not rollback. Compensation is explicit.**
+15. **Provider Events are persisted before asynchronous processing.**
+16. **Webhooks provide freshness. Reconciliation repairs drift.**
+17. **Background execution obeys the same tenant boundary as interactive requests.**
+18. **Workflow infrastructure does not become the product audit record.**
+19. **Demo and production use the same execution model with different permitted resources.**
+20. **The runner may change without redefining the work.**
+
+Durable execution is not about keeping a process alive forever.
+
+It is about making sure interruption cannot erase intent, repeat unsafe work, or leave the system unable to explain what happens next.
+
+**Persist the intent. Wake the runner. Resume from truth.**
