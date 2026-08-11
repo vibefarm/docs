@@ -1,3 +1,1548 @@
 ---
 title: "Webhooks, Events & Command Queue"
+description: "How Rule & Form accepts external change, records internal facts, queues provider mutations, and survives duplicates, retries, worker failure, and ambiguous provider outcomes."
 ---
+
+External systems are allowed to be unreliable. Rule & Form's record of what happened is not.
+
+Webhooks tell Rule & Form about activity that occurred outside the system. Events record facts Rule & Form has accepted. Commands record side effects Rule & Form intends to perform through a provider.
+
+All three cross failure boundaries. A duplicate delivery, crashed request, dead worker, lost acknowledgement, provider timeout, or retry must not create a second customer action or erase the first one.
+
+## Three durable concepts
+
+```text
+PROVIDER EVENT
+something happened outside Rule & Form
+
+SYSTEM EVENT
+something happened inside Rule & Form
+
+PROVIDER COMMAND
+Rule & Form intends something to happen outside Rule & Form
+```
+
+These records solve different problems.
+
+| Record | Direction | Meaning | Example |
+| :-- | :-- | :-- | :-- |
+| **Provider Event** | Provider → Rule & Form | External fact received from a connected provider | inbound SMS received |
+| **System Event** | Rule & Form → Rule & Form | Internal fact produced by committed domain state | `message.received` |
+| **Provider Command** | Rule & Form → Provider | Durable intent to perform an external side effect | send SMS |
+
+A Provider Event can cause a domain change. That domain change can produce a System Event. Product policy may then create one or more Provider Commands.
+
+```text
+HighLevel webhook
+      ↓
+Provider Event
+      ↓
+Rule & Form processing
+      ↓
+Message created
+      ↓
+System Event
+message.received
+      ↓
+product behavior
+      ↓
+Provider Command
+send missed-call response
+```
+
+**Receipt, fact, and intent remain separate.**
+
+Customers, Leads, Messages, Appointments, Business Records, Sites, Content State, Capability State, and other domain objects remain normal durable application state.
+
+Events preserve meaningful facts, trigger asynchronous work, connect causality, and support inspection or replay where needed. They do not replace the canonical tables described in [Domain Model & Database Schema](https://chatgpt.com/architecture/foundation/domain-model-and-database-schema).
+
+---
+
+## Inbound webhooks
+
+A webhook request has a narrow job.
+
+```text
+provider request
+      ↓
+capture required raw request data
+      ↓
+verify authenticity
+      ↓
+resolve Integration Connection
+      ↓
+resolve Organization / Business
+      ↓
+deduplicate
+      ↓
+persist Provider Event
+      ↓
+commit
+      ↓
+acknowledge provider
+      ↓
+process asynchronously
+```
+
+Business processing does not belong inside the webhook request merely because the data arrived there.
+
+### Verify before trust
+
+Provider-specific verification remains inside integration infrastructure and the relevant provider adapter.
+
+Where a provider signs the raw request body, verification happens against those original bytes before JSON transformation can alter them.
+
+```text
+HTTP request
+    ↓
+provider verification
+    ↓
+VERIFIED
+or
+REJECTED
+```
+
+A failed authenticity check reaches no tenant-owned business processing.
+
+Tenant resolution still happens through trusted integration state.
+
+```text
+verified provider event
+        ↓
+provider resource identity
+        ↓
+Integration Connection
+        ↓
+Organization
+        ↓
+Business where applicable
+```
+
+A provider object ID by itself never becomes tenant authority.
+
+### Resolve before recording tenant data
+
+A valid provider request may still reference an unknown, disconnected, or ambiguous provider resource.
+
+That condition does not authorize a global search for a matching Customer, Lead, phone number, email address, or Business.
+
+```text
+provider identity
+      ↓
+exact Integration Connection found
+      ↓
+tenant processing allowed
+```
+
+If the connection cannot be resolved, the request is quarantined or recorded as an ingress failure according to provider policy. It does not enter an arbitrary tenant.
+
+Any diagnostic record created before tenant resolution contains only the information required to investigate the failure and does not become customer-owned domain state.
+
+### Persist before acknowledgement
+
+Once authenticity and tenant ownership are established, Rule & Form durably records the Provider Event before acknowledging receipt.
+
+```text
+BEGIN
+
+insert Provider Event
+apply dedupe constraint
+
+COMMIT
+
+      ↓
+
+acknowledge provider
+```
+
+The important boundary is the commit.
+
+If the process dies after commit but before acknowledgement, the provider may send the event again. The second delivery resolves to the existing Provider Event and causes no duplicate domain action.
+
+If the process dies before commit, Rule & Form has not claimed durable receipt.
+
+**Acknowledgement means we have the event. It does not mean every consequence of the event has already finished.**
+
+### Provider Event
+
+A Provider Event needs enough durable state to preserve what Rule & Form received and how that event moved through the system.
+
+```text
+Provider Event
+
+id
+
+organization_id
+business_id
+
+integration_connection_id
+provider
+
+provider_event_id
+event_type
+provider_object_identity
+
+raw_payload
+raw_body_hash
+
+verification_result
+
+provider_occurred_at
+received_at
+
+normalization_version
+processing_status
+processed_at
+
+correlation_id
+error_state
+```
+
+The exact physical schema may vary by provider. The ownership and history requirements do not.
+
+Raw payloads are evidence, not domain objects. They remain access-controlled, are never treated as canonical business state, and are not copied into ordinary application logs.
+
+### Raw payload retention
+
+Raw provider payloads exist for verification evidence, diagnostics, replay, reconciliation, and incident investigation.
+
+They are not permanent application history by default.
+
+```text
+Provider Event
+
+normalized event metadata
+    retained according to event-history policy
+
+raw provider payload
+    limited retention
+        ↓
+    purged when no longer operationally required
+```
+
+V1 defines a configurable raw-payload retention period rather than embedding indefinite retention into the event model. V1 scope
+
+Before raw payload deletion, Rule & Form retains the normalized event data, provider identity, relevant hashes, timestamps, processing outcome, correlation history, and other durable metadata required to explain what occurred.
+
+A subsystem may require longer retention for a specific payload class when replay, contractual, security, or regulatory requirements justify it. That exception is explicit.
+
+Attachments or customer artifacts that belong to durable Rule & Form history are copied into their proper domain storage before a temporary provider representation expires.
+
+**Keep the evidence we need. Do not keep sensitive provider payloads forever because deletion was never designed.**
+
+### Deduplication
+
+Duplicate webhook delivery is normal integration behavior.
+
+Rule & Form therefore deduplicates at the database boundary.
+
+```text
+same Integration Connection
++
+same provider event identity
+        ↓
+same Provider Event
+```
+
+Where the provider supplies stable event identity, that identity is stored with connection scope and protected by a unique constraint.
+
+Conceptually:
+
+```text
+unique(
+  integration_connection_id,
+  provider_event_id
+)
+```
+
+If a provider does not supply usable event identity, its adapter defines a documented provider-specific fallback based on stable event fields and payload identity.
+
+A generic hash is not casually declared equivalent to a provider event ID. Different providers have different delivery semantics.
+
+### Duplicate deliveries
+
+A duplicate delivery is acknowledged without repeating business processing.
+
+```text
+delivery 1
+    ↓
+Provider Event 123
+    ↓
+processed
+
+delivery 2
+    ↓
+same provider event identity
+    ↓
+Provider Event 123 already exists
+    ↓
+acknowledge
+    ↓
+no second Message / Appointment / Customer action
+```
+
+Delivery-attempt metadata may be retained for diagnostics where useful. The original Provider Event remains the event identity.
+
+### Asynchronous processing
+
+After persistence, the event becomes durable work.
+
+```text
+Provider Event
+      ↓
+processing trigger
+      ↓
+Inngest
+      ↓
+load event inside Organization scope
+      ↓
+normalize provider payload
+      ↓
+apply domain rules
+      ↓
+commit domain state
+      ↓
+emit System Events
+```
+
+The background trigger carries Rule & Form identifiers. The worker reloads durable state rather than treating a transient queue payload as the source of truth.
+
+The raw provider payload may be translated into normalized input before domain processing:
+
+```text
+HighLevel payload
+
+ContactId
+MessageType
+LocationId
+provider timestamps
+
+        ↓
+
+HighLevel Adapter
+
+        ↓
+
+Normalized inbound message
+
+conversation mapping
+channel
+direction
+sender
+recipient
+body
+occurred_at
+provider identity
+```
+
+Provider vocabulary stops at the adapter boundary.
+
+### Processing failure
+
+Webhook acknowledgement and Provider Event processing have separate lifecycles.
+
+```text
+Provider Event
+    RECEIVED
+
+processing attempt
+    FAILED
+
+Provider Event
+    still exists
+        ↓
+retry
+```
+
+A database outage while applying an inbound Message does not require HighLevel to resend the webhook. Rule & Form already owns the event and can retry from its durable record.
+
+Permanent processing failure becomes visible operating state. It does not disappear into a server log.
+
+---
+
+## Time and ordering
+
+Arrival order is not truth.
+
+An event may be delivered late, retried, duplicated, or observed after a newer provider state has already reached Rule & Form.
+
+```text
+provider event time
+      ≠
+received time
+      ≠
+processed time
+```
+
+Rule & Form preserves those distinctions.
+
+```text
+provider_occurred_at
+    when the provider says it happened
+
+received_at
+    when Rule & Form received it
+
+processed_at
+    when Rule & Form successfully applied it
+```
+
+An older event arriving later does not automatically overwrite newer authoritative state.
+
+Where a provider supplies sequence, revision, or comparable state information, the adapter uses it. Where event ordering cannot be proven safely, Rule & Form reconciles against current provider reality.
+
+**Webhook order is evidence. It is not a global transaction log.**
+
+---
+
+## System Events
+
+System Events record meaningful facts that occurred inside Rule & Form.
+
+Examples include:
+
+```text
+lead.created
+message.received
+message.sent
+appointment.created
+appointment.cancelled
+business_record.version.created
+content_state.version.created
+capability.changed
+publishing_run.failed
+site.published
+```
+
+Event names describe completed facts. They do not contain provider instructions.
+
+### Commit with the fact
+
+A System Event is created in the same database transaction as the state that makes it true whenever that event drives required asynchronous behavior.
+
+```text
+BEGIN
+
+insert Lead
+insert System Event
+  lead.created
+
+COMMIT
+```
+
+There is no valid state where the Lead committed but the required durable fact that drives downstream work disappeared because a second network call failed.
+
+### System Event shape
+
+```text
+System Event
+
+id
+
+organization_id
+business_id
+
+event_name
+schema_version
+
+subject_type
+subject_id
+
+payload
+
+occurred_at
+
+causation_id
+correlation_id
+
+actor_type
+actor_id
+```
+
+Not every event requires every field. The envelope remains stable enough that asynchronous consumers, Workbench, and audit tooling can understand where the event came from.
+
+### Causation and correlation
+
+A single customer interaction may move through many systems.
+
+```text
+Provider Event
+    inbound message
+        ↓
+System Event
+    message.received
+        ↓
+System Event
+    lead.updated
+        ↓
+Provider Command
+    send automatic response
+        ↓
+Command Attempt
+        ↓
+provider result
+```
+
+`causation_id` answers **what directly caused this record?**
+
+`correlation_id` answers **which larger operation or customer interaction does this belong to?**
+
+Those relationships give Rule & Form one trace across inbound delivery, domain processing, workflow, provider execution, and final result.
+
+### Events are intentional
+
+Rule & Form does not emit a public event for every database update.
+
+Events exist when a fact has architectural value:
+
+- another subsystem must react asynchronously
+- the fact is useful for durable orchestration
+- the fact belongs in operational history
+- multiple consumers legitimately care about it
+- replay or traceability matters
+
+A field update with no downstream meaning does not need event infrastructure wrapped around it.
+
+**An event is a contract, not exhaust from the database.**
+
+---
+
+## The transactional handoff
+
+The dangerous gap in asynchronous systems is the space between committing application state and telling the background system that work exists.
+
+```text
+database commit
+      ↓
+process crashes here
+      ↓
+background trigger never sent
+```
+
+Rule & Form closes that gap with durable application records.
+
+For outbound work, the Provider Command itself acts as the durable queue record. For internal asynchronous reactions, a System Event can serve the same role when it requires dispatch.
+
+```text
+BEGIN
+
+update domain state
+insert System Event
+insert Provider Command where required
+
+COMMIT
+
+        ↓
+
+signal Inngest
+```
+
+If signaling succeeds, execution starts normally.
+
+If signaling fails after the commit, the work has not been lost. A recovery dispatcher can find undispatched or still-pending durable records and signal them again.
+
+```text
+pending durable work
+      ↓
+dispatcher / recovery scan
+      ↓
+Inngest trigger
+      ↓
+worker reloads durable record
+```
+
+The wake-up mechanism may fail. **The intent survives.**
+
+Rule & Form owns the existence and identity of the business action.
+
+The database therefore answers whether a Provider Command exists, which tenant owns it, what logical action it represents, whether it has succeeded, and whether another execution is safe.
+
+Inngest can be re-signaled from that state. The application cannot reconstruct a missing Provider Command from an assumption that a workflow probably ran.
+
+---
+
+## Provider Commands
+
+A Provider Command represents one logical Rule & Form instruction to mutate external provider state.
+
+Examples:
+
+```text
+highlevel.contact.upsert
+highlevel.message.send
+highlevel.appointment.create
+highlevel.appointment.cancel
+
+framer.cms.apply
+framer.localization.apply
+framer.publish
+framer.deploy
+```
+
+A command is durable intent. The Provider Adapter performs one execution attempt against that intent.
+
+```text
+Rule & Form state
+      ↓
+Provider Command
+      ↓
+workflow
+      ↓
+Provider Adapter
+      ↓
+provider
+```
+
+### Command creation
+
+Provider Commands are created by Rule & Form domain logic or by a durable workflow operating from Rule & Form state.
+
+The browser never becomes the command queue.
+
+```text
+Business Hub action
+      ↓
+server-side domain operation
+      ↓
+Provider Command persisted
+      ↓
+background execution
+```
+
+For example, sending a reply from Business Hub can commit both local message state and the provider instruction together:
+
+```text
+BEGIN
+
+create Message
+    direction = outbound
+    transport = pending
+
+create Provider Command
+    highlevel.message.send
+
+COMMIT
+```
+
+The local Message survives a HighLevel outage because the customer's action existed before transport succeeded.
+
+### Command shape
+
+```text
+Provider Command
+
+id
+
+organization_id
+business_id
+
+integration_connection_id
+provider
+
+command_type
+payload_version
+payload
+
+subject_type
+subject_id
+
+idempotency_key
+ordering_key
+
+status
+available_at
+
+causation_id
+correlation_id
+
+created_at
+started_at
+completed_at
+```
+
+Provider-specific payload construction remains behind the adapter boundary. The durable command contains the Rule & Form intent required to reconstruct the operation safely.
+
+Credentials are never stored in the command payload.
+
+### Command states
+
+A small explicit lifecycle makes provider work inspectable.
+
+```text
+PENDING
+   ↓
+RUNNING
+   ↓
+SUCCEEDED
+```
+
+Failure paths remain explicit:
+
+```text
+RUNNING
+   ↓
+RETRY WAIT
+   ↓
+PENDING
+
+
+RUNNING
+   ↓
+BLOCKED
+
+
+RUNNING
+   ↓
+UNCERTAIN
+   ↓
+RECONCILE
+
+
+RUNNING
+   ↓
+FAILED
+```
+
+A command may also become `CANCELLED` while cancellation is still safe.
+
+| State | Meaning |
+| :-- | :-- |
+| `pending` | Durable intent exists and can be executed |
+| `running` | One leased execution attempt currently owns the command |
+| `retry_wait` | Temporary failure, waiting for another attempt |
+| `blocked` | Execution cannot continue until a known dependency changes |
+| `uncertain` | Provider may have performed the side effect, outcome not proven |
+| `succeeded` | Intended provider side effect has been confirmed |
+| `failed` | Execution reached a terminal failure requiring no automatic retry |
+| `cancelled` | Intent was withdrawn before unsafe execution began |
+
+Exact storage may use timestamps and derived states where appropriate. The operational meaning remains visible.
+
+### One active attempt
+
+Two workers must not execute the same command concurrently.
+
+```text
+Provider Command
+      ↓
+atomic claim
+      ↓
+leased execution
+      ↓
+one active executor
+```
+
+Claiming is durable and atomic. The worker receives a time-bounded lease rather than permanent ownership of the command.
+
+```text
+command_id
+claimed_by
+lease_expires_at
+attempt_id
+```
+
+A worker may renew the lease while it is actively executing the attempt.
+
+The worker does not hold an open database transaction while waiting on a provider network request. The command is claimed, the attempt is recorded, the transaction commits, and then the provider call occurs.
+
+### Worker death and expired leases
+
+A worker can disappear after claiming a command and before recording the result.
+
+```text
+RUNNING
+    ↓
+worker dies
+    ↓
+lease expires
+```
+
+An expired lease does **not** return the command directly to `pending`.
+
+Once execution has begun, Rule & Form cannot assume the provider side effect did not occur.
+
+```text
+RUNNING
+    ↓
+lease expires
+    ↓
+UNCERTAIN
+    ↓
+reconcile provider reality
+```
+
+Only after reconciliation proves that the provider action did not occur may the same Provider Command become eligible for another execution attempt.
+
+If reconciliation proves the action succeeded, the command moves to `succeeded`.
+
+If neither outcome can be established safely, the command remains `uncertain` for review.
+
+### Command Attempts
+
+Retry history is separate from logical command identity.
+
+```text
+Provider Command 781
+
+Attempt 1
+    rate limited
+
+Attempt 2
+    timeout / uncertain
+
+Attempt 3
+    only if reconciliation proves retry safe
+```
+
+A Command Attempt can record:
+
+```text
+attempt_id
+command_id
+attempt_number
+
+started_at
+finished_at
+
+adapter_version
+request_fingerprint
+
+normalized_result
+normalized_error_class
+provider_request_reference
+
+retry_after
+outcome
+```
+
+Provider secrets and sensitive authorization material are excluded.
+
+The Command remains the action. Attempts explain execution history.
+
+---
+
+## Idempotency
+
+A retry is another attempt to perform the same logical action.
+
+It is not a new action.
+
+```text
+logical action
+      ↓
+stable Provider Command
+      ↓
+stable idempotency identity
+
+attempt 1
+attempt 2
+attempt 3
+```
+
+Useful identities may be based on durable Rule & Form objects:
+
+```text
+send-message:{message_id}
+
+create-appointment:{appointment_id}
+
+sync-customer:{customer_id}:{desired_version}
+
+publish:{publishing_run_id}:{publish_step}
+```
+
+The exact encoding belongs in [Naming, IDs & Conventions](https://chatgpt.com/architecture/foundation/naming-ids-and-conventions).
+
+**Attempt number never becomes part of logical idempotency identity.**
+
+### Command creation is idempotent too
+
+The request that creates a Provider Command may itself be retried.
+
+A unique logical command identity prevents this:
+
+```text
+same tenant
+same connection
+same logical action
+      ↓
+same Provider Command
+```
+
+A double-click, repeated API request, retried workflow step, or duplicate System Event must not silently create two externally visible actions.
+
+### Provider-native idempotency
+
+Where a provider supports native idempotency controls, the adapter uses them when appropriate.
+
+Rule & Form still keeps its own command identity. Provider behavior cannot be the only record that an action exists.
+
+Where native idempotency is unavailable, Rule & Form relies on command state, stable provider mappings, provider lookup where possible, and reconciliation before repeating ambiguous work.
+
+### We do not claim exactly once
+
+Distributed provider execution cannot be reduced to a slogan.
+
+A network timeout can occur after the provider accepted the request but before Rule & Form received the response.
+
+```text
+Rule & Form
+    sends command
+        ↓
+provider performs side effect
+        ↓
+response connection dies
+        ↓
+Rule & Form does not know outcome
+```
+
+Blind retry can create a duplicate. Blind failure can leave Rule & Form believing an action never happened.
+
+The command becomes `uncertain`.
+
+```text
+UNCERTAIN
+    ↓
+inspect mapping / provider reality
+    ↓
+confirmed success
+or
+confirmed absent
+or
+requires review
+```
+
+A crashed worker is the same class of problem. Execution disappeared. Provider outcome did not become knowable merely because the worker did.
+
+**Rule & Form guarantees stable logical intent, idempotent processing, duplicate protection, and convergence. It does not pretend an external network provides magical exactly-once execution.**
+
+---
+
+## Ordering and concurrency
+
+The command queue is not one global FIFO line.
+
+Most Rule & Form work is independent and should proceed independently. Ordering is enforced only where the domain actually requires it.
+
+```text
+Conversation A
+    message 1
+    message 2
+
+Conversation B
+    unrelated work
+
+Site C
+    publishing run
+```
+
+An ordering key identifies commands that must not pass one another:
+
+```text
+conversation:{conversation_id}
+
+site:{site_id}
+
+integration:{connection_id}
+```
+
+### Head-of-line behavior
+
+Commands sharing an ordering key preserve logical order.
+
+If an earlier command enters `retry_wait`, `blocked`, or `uncertain`, later commands on the same ordering key do not pass it unless that command type explicitly declares that reordering is safe.
+
+```text
+conversation:123
+
+Command 1
+    retry_wait
+
+Command 2
+    pending
+
+        ↓
+
+Command 2 waits
+```
+
+This is conservative by default because later provider actions may depend on the side effect or provider state established by the earlier command.
+
+Unrelated ordering keys continue normally.
+
+```text
+conversation:123
+    blocked
+
+conversation:456
+    continues
+
+site:789
+    continues
+```
+
+A subsystem may define weaker ordering when operations are proven independent. That exception is explicit in the command contract rather than inferred by the worker.
+
+Publishing already carries a stronger rule: one active Publishing Run per Site.
+
+Provider-level quotas may also require concurrency control across commands sharing an Integration Connection. The provider adapter reports rate-limit information; workflow infrastructure decides when another attempt may run.
+
+---
+
+## Inngest's role
+
+Inngest is the selected execution layer for asynchronous Rule & Form workflows.
+
+It receives durable Rule & Form identifiers and coordinates the work around them.
+
+```text
+PostgreSQL
+
+Provider Event 124
+Provider Command 781
+Publishing Run 42
+
+        ↓
+
+execution signal
+
+        ↓
+
+Inngest
+
+        ↓
+
+load durable record
+execute steps
+retry
+resume
+```
+
+The workflow input stays small.
+
+```text
+organization_id
+provider_event_id
+
+or
+
+organization_id
+provider_command_id
+```
+
+The durable provider payload, command state, canonical domain objects, and credentials are reloaded from their proper stores during execution.
+
+Do not copy full webhook payloads, provider tokens, Business Records, or long-lived mutable state into workflow trigger data merely because the runner can carry JSON.
+
+### Wake-up is not ownership
+
+An Inngest event means **work may be ready to run**.
+
+The Rule & Form database answers whether that work still exists, whether it has already succeeded, which tenant owns it, and whether execution remains valid.
+
+```text
+Inngest trigger delivered twice
+        ↓
+load Provider Command
+        ↓
+already succeeded?
+        ↓
+YES
+    no provider side effect
+```
+
+Queue correctness therefore survives duplicate triggers.
+
+### Recovery dispatch
+
+A recovery process scans for work that exists durably but has not been completed or successfully dispatched.
+
+```text
+Provider Command
+    pending
+    no successful dispatch
+        ↓
+re-signal
+
+
+Provider Event
+    received
+    not processed
+        ↓
+re-signal
+```
+
+Lease expiry is recovered separately because a command that already entered provider execution cannot safely be treated as ordinary pending work.
+
+```text
+Provider Command
+    running
+    lease expired
+        ↓
+uncertain
+        ↓
+reconcile
+```
+
+This closes the commit-to-runner and worker-death gaps without adding a second independent queue as V1 infrastructure.
+
+---
+
+## Commands inside workflows
+
+A long-running Rule & Form operation remains a first-class run object.
+
+```text
+Publishing Run
+Provisioning Run
+future migration run
+```
+
+The command queue does not flatten those workflows into anonymous jobs.
+
+A Publishing Run may create or execute several provider mutation units:
+
+```text
+Publishing Run 42
+
+preflight
+    ↓
+asset commands
+    ↓
+CMS command
+    ↓
+localization command
+    ↓
+publish command
+    ↓
+verify
+```
+
+The run owns orchestration and frozen inputs.
+
+Provider Commands own durable external side-effect identity where those steps require it.
+
+That relationship preserves the rule established by [Framer Publishing](https://chatgpt.com/architecture/integrations-and-execution/framer-publishing): completed work survives partial failure, retries converge on the same intended output, and production state does not advance until verification succeeds.
+
+---
+
+## Replay and repair
+
+Durable records make recovery an explicit operation.
+
+### Reprocess an inbound event
+
+A Provider Event can be reprocessed from stored evidence when processing logic failed or was repaired.
+
+```text
+Provider Event 124
+    processing failed
+        ↓
+fix underlying problem
+        ↓
+reprocess same event
+```
+
+Reprocessing does not create a second Provider Event.
+
+The domain handler remains idempotent, and current state is checked before applying an old event again.
+
+### Retry a command
+
+A retry continues the same Provider Command.
+
+```text
+Command 781
+Attempt 1 failed
+        ↓
+retry
+        ↓
+Command 781
+Attempt 2
+```
+
+A new customer action creates a new command.
+
+That distinction matters.
+
+```text
+retry failed SMS send
+    same Message
+    same Command
+
+customer sends another SMS
+    new Message
+    new Command
+```
+
+### Manual repair
+
+Some failures should stop automatic execution.
+
+Examples include:
+
+- revoked provider authorization
+- invalid provider mapping
+- unsupported provider state
+- schema mismatch
+- repeated ambiguous outcome
+- provider resource manually deleted
+- conflict requiring human judgment
+
+Those commands become `blocked`, `uncertain`, or terminally `failed` according to the actual condition.
+
+Workbench exposes the evidence required to repair the underlying problem before execution continues.
+
+---
+
+## Provider events can produce no domain change
+
+A valid event does not automatically deserve a mutation.
+
+```text
+Provider Event
+      ↓
+normalize
+      ↓
+evaluate authority and current state
+      ↓
+apply
+or
+ignore
+or
+reconcile
+```
+
+Examples include:
+
+- duplicate provider state already reflected locally
+- event for a provider field Rule & Form does not treat as authoritative
+- stale event older than known current state
+- irrelevant provider activity outside the managed surface
+- event generated by Rule & Form's own previous command and already represented locally
+
+The event remains part of history even when processing concludes with no domain change.
+
+**Received does not mean adopted.**
+
+---
+
+## Command results
+
+Provider success updates Rule & Form through an explicit result path.
+
+```text
+Provider Command
+      ↓
+Adapter result
+      ↓
+transaction
+
+command = succeeded
+provider mapping updated
+transport state updated
+domain projection updated
+System Event emitted
+
+      ↓
+commit
+```
+
+A successful provider response does not directly mutate unrelated canonical state.
+
+The result transaction applies only the state that the provider owns or the Rule & Form projection that the command was intended to establish.
+
+Examples:
+
+```text
+send message result
+    provider delivery identity
+    transport state
+
+create appointment result
+    provider appointment mapping
+
+Framer publish result
+    deployment identity
+    publishing execution state
+```
+
+Provider response data remains scoped to its authority.
+
+---
+
+## Events, commands, and reconciliation
+
+Webhooks are the fast inbound path.
+
+Commands are the controlled outbound path.
+
+Neither proves long-term agreement.
+
+```text
+          Provider
+
+      webhook ↓   ↑ command
+
+        Rule & Form
+
+             ↕
+       reconciliation
+```
+
+A webhook may never arrive. A command may succeed while its response is lost. A provider resource may later be edited or deleted manually.
+
+Reconciliation closes those gaps.
+
+---
+
+## Observability
+
+Asynchronous work is part of the product's operating state.
+
+Workbench and Internal Operations must be able to answer:
+
+```text
+What arrived?
+
+Was it authentic?
+
+Which tenant did it resolve to?
+
+Was it a duplicate?
+
+What domain state changed?
+
+Which System Events were produced?
+
+Which Provider Commands were created?
+
+Which command is waiting?
+
+What attempts ran?
+
+Did an execution lease expire?
+
+What did the provider return?
+
+Is the result known, failed, blocked, or uncertain?
+
+What should happen next?
+```
+
+A useful trace may look like:
+
+```text
+CORRELATION 01...
+
+Provider Event
+    HighLevel MessageInbound
+    received 09:14:03
+    verified
+    Organization: Johnson Plumbing
+
+      ↓
+
+System Event
+    message.received
+
+      ↓
+
+Provider Command
+    highlevel.message.send
+    missed-call response
+
+      ↓
+
+Attempt 1
+    rate limited
+
+      ↓
+
+Attempt 2
+    succeeded
+
+      ↓
+
+Message transport
+    delivered
+```
+
+Logs reference stable Rule & Form IDs and correlation IDs.
+
+Sensitive raw payloads, authorization headers, refresh tokens, API keys, and provider secrets do not become normal log fields.
+
+---
+
+## Failure boundaries
+
+A failure should stop at the smallest correct boundary.
+
+```text
+webhook processing fails
+    Provider Event remains
+
+worker dies during provider execution
+    Provider Command becomes uncertain
+
+HighLevel command fails
+    Lead remains
+
+SMS fails
+    Website remains live
+
+Framer publish fails
+    previous Published Snapshot remains current
+
+booking provider fails
+    Appointment intent remains inspectable
+```
+
+Provider infrastructure is allowed to degrade.
+
+Rule & Form state must remain explainable.
+
+### No silent abandonment
+
+A command that exhausts automatic retries becomes visible state.
+
+An event that cannot be processed becomes visible state.
+
+A workflow waiting on a dependency becomes visible state.
+
+A command whose worker disappeared becomes visible `uncertain` state after its lease expires.
+
+There is no terminal path named _we logged the exception and hope somebody notices_.
+
+---
+
+## V1 boundary
+
+```text
+- Provider Event storage
+- Provider event identity and database-level deduplication
+- Provider authenticity verification before tenant processing
+- Integration Connection tenant resolution
+- Raw-event evidence with controlled access and explicit retention
+- Separate provider occurrence, receipt, and processing timestamps
+- Fast webhook acknowledgement after durable persistence
+- Asynchronous Provider Event processing
+- Idempotent event handlers
+- System Events for meaningful asynchronous facts
+- Event schema version
+- Causation and correlation identity
+- Provider Command storage
+- Stable command idempotency identity
+- Atomic domain-state + command creation
+- Durable dispatch recovery
+- Leased command execution
+- Expired-lease recovery through `uncertain`
+- One active attempt per Provider Command
+- Command Attempt history
+- Retry-wait, blocked, failed, and uncertain outcomes
+- Ordering-key head-of-line behavior
+- Ambiguous provider-result reconciliation before unsafe retry
+- Inngest execution from durable Rule & Form identifiers
+- Recovery scan for stranded pending work
+- Workbench-readable event and command history
+- Simulated inbound events and outbound commands for tests and demo
+```
+
+```text
+- Kafka
+- Separate general-purpose message broker
+- Database change-data capture
+- Universal enterprise event bus
+- Event sourcing
+- Global FIFO ordering
+- Arbitrary event fanout
+- Cross-region event replication
+- Customer-created webhook subscriptions
+- Customer automation from raw internal events
+- Standalone dead-letter-queue product
+- Generic distributed-lock service
+- Exactly-once provider execution claims
+- Replaying the entire application from historical events
+- Infrastructure abstractions for scale the product has not reached
+```
+
+V1 needs durable boundaries, not distributed-systems theater.
+
+---
+
+## Acceptance conditions
+
+Webhooks, Events & Command Queue is working when:
+
+- An invalid provider signature reaches no tenant-owned processing.
+- A valid provider event resolves through exactly one Integration Connection before business processing.
+- An unknown provider resource cannot discover a tenant through a global customer search.
+- A webhook is acknowledged only after its Provider Event is durably recorded.
+- Receiving the same provider event twice creates one logical Provider Event.
+- Duplicate webhook delivery creates no duplicate Message, Lead, Appointment, or other domain action.
+- Provider Event processing can fail after acknowledgement and later resume from durable state.
+- Provider occurrence time, Rule & Form receipt time, and successful processing time remain distinct.
+- An out-of-order provider event cannot blindly overwrite newer authoritative state.
+- Raw Provider Event payloads are purged according to an explicit retention policy without destroying normalized event history.
+- A committed domain action that requires provider execution creates its Provider Command in the same transaction.
+- Failure to signal Inngest after commit does not lose the command.
+- Recovery dispatch can find and re-signal stranded pending work.
+- Repeated workflow triggers cannot execute an already successful Provider Command again.
+- A retry uses the same command identity and idempotency identity as the original logical action.
+- A new customer action creates a new command rather than mutating the identity of an earlier action.
+- Two workers cannot execute one Provider Command concurrently.
+- A worker crash cannot leave a Provider Command permanently stranded in `running`.
+- An expired execution lease becomes `uncertain` before another provider attempt can occur.
+- A provider timeout after a possible side effect produces an uncertain outcome rather than a blind duplicate retry.
+- Reconciliation can prove an uncertain command succeeded or determine that retry is safe.
+- A blocked, retrying, or uncertain command prevents later commands on the same ordering key from passing it unless reordering is explicitly declared safe.
+- Provider failure does not erase the Rule & Form Lead, Message, Appointment, Site, or other originating domain state.
+- A System Event is committed with the domain fact when downstream execution depends on it.
+- Event and command payload versions can evolve without redefining historical records.
+- Workbench can trace one interaction from Provider Event through System Events, Provider Commands, attempts, and provider result.
+- Raw webhook payloads and provider credentials do not leak into ordinary logs.
+- Local, preview, and demo tests can exercise the same paths without reaching production customer provider resources.
+
+---
+
+## Foundation rules
+
+1. **Provider Events, System Events, and Provider Commands are separate durable concepts.**
+2. **A webhook request performs verification, tenant resolution, deduplication, persistence, and acknowledgement; business processing continues asynchronously.**
+3. **A provider signature proves origin, not tenant ownership.**
+4. **Provider events resolve through trusted Integration Connections before tenant-owned processing.**
+5. **Provider Event identity is enforced durably at the database boundary.**
+6. **Duplicate delivery must be harmless.**
+7. **Provider occurrence time, receipt time, and processing time remain distinct.**
+8. **Provider arrival order is never treated as universal truth.**
+9. **System Events describe committed facts and are not a replacement for canonical domain state.**
+10. **Required System Events are committed atomically with the state that makes them true.**
+11. **Provider mutations originate from durable Provider Commands.**
+12. **Domain state and the Provider Command required by that state are committed atomically where losing the command would violate the action.**
+13. **The Provider Command is the logical action; Command Attempts are execution history.**
+14. **One Provider Command has at most one active execution attempt.**
+15. **Every retryable side effect has stable idempotency identity independent of attempt number.**
+16. **Rule & Form does not claim exactly-once provider execution where the external system cannot prove it.**
+17. **Ambiguous provider outcomes enter an explicit uncertain state and are reconciled before unsafe retry.**
+18. **Provider Command execution uses expiring leases; worker death cannot create permanent ownership.**
+19. **An expired execution lease becomes uncertain until provider reality proves whether another attempt is safe.**
+20. **Ordering keys preserve head-of-line order by default; reordering requires an explicit command contract.**
+21. **Ordering is scoped only where product correctness requires it. There is no global FIFO assumption.**
+22. **Inngest executes durable work; PostgreSQL remains the authority for event identity, command identity, and business intent.**
+23. **A failed trigger can be regenerated from durable pending state.**
+24. **Provider payloads remain provider evidence; normalized domain state remains Rule & Form state.**
+25. **Raw provider payloads have explicit retention and are not stored indefinitely by accident.**
+26. **Provider failure never erases the Rule & Form action that caused the provider work.**
+27. **Every asynchronous path remains tenant-scoped.**
+28. **Events and commands are inspectable through stable IDs, causation, correlation, leases, and execution history.**
+29. **Failures become visible state. They do not disappear into logs.**
+
+Webhooks bring external reality into Rule & Form. Commands carry Rule & Form intent back out.
+
+The queue exists so neither side depends on one request, one worker, or one provider response going perfectly.
+
+**Record the fact. Persist the intent. Then execute.**
+
+---
+
+## Next
