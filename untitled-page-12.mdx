@@ -1,0 +1,468 @@
+---
+title: "MakerKit Lite Plan/Build instructions"
+---
+
+I dug back through MakerKit’s current docs, Lite repo, Supabase kit architecture, upgrade language, and AI-development docs.
+
+**The better conclusion is: use MakerKit Lite. Do not try to recreate it by hand.**
+
+My last recommendation overcorrected.
+
+## What Lite actually gives us for \$0
+
+This is not just an empty Next.js repo.
+
+So yes, **the thing you liked about MakerKit is real**.
+
+It saves us from sitting there building:
+
+```text
+login
+signup
+password/reset flows
+session plumbing
+protected route plumbing
+profile/settings
+basic dashboard shell
+UI foundation
+Next.js project conventions
+Supabase local environment
+database migration structure
+Turborepo structure
+basic testing setup
+```
+
+That is exactly the kind of commodity work we should avoid.
+
+## The important discovery is that we were comparing the wrong upgrade
+
+This distinction resolves most of the confusion.
+
+### Bad path
+
+```text
+MakerKit Lite
+Supabase Auth
+Supabase/Postgres
+        ↓
+later
+        ↓
+MakerKit Pro Drizzle
+Better Auth
+Drizzle
+different tenancy infrastructure
+```
+
+**I still do not recommend that.**
+
+That is where authentication and the data-access foundation really change.
+
+### Good path
+
+```text
+MakerKit Lite
+Next.js + Supabase
+        ↓
+Rule & Form V1
+        ↓
+later, if justified
+        ↓
+MakerKit Pro Supabase
+Next.js + Supabase
+```
+
+That is a completely different proposition.
+
+MakerKit itself currently says:
+
+> the full kit picks up where the Lite kit stops
+
+That statement materially changes my assessment.
+
+## Is Lite → Pro Supabase literally an upgrade button?
+
+**No. I could not find an official current migration document promising that you install Pro on top of Lite and everything magically appears.**
+
+I would not tell you that.
+
+So there will eventually be integration/migration work if we buy Pro.
+
+But that is very different from:
+
+> we're going to have to rebuild Rule & Form.
+
+If we keep our product code properly separated, this:
+
+```text
+Business Record
+Content State
+Website Engine
+Structured Intake
+Framer publishing
+HighLevel adapter
+Leads
+Jobs
+Follow-up
+Provisioning
+Workbench
+```
+
+doesn't suddenly become useless because Pro adds an account system.
+
+Those are **our application domains**.
+
+The part that changes is mostly the SaaS shell underneath them.
+
+## I also think we should reconsider Drizzle \+ Better Auth as a requirement
+
+This is the real architectural adjustment I would make.
+
+We chose them because they were good technology choices.
+
+We did **not** choose them because Rule & Form intrinsically requires Better Auth or Drizzle.
+
+Our real architecture is:
+
+```text
+User / tenant isolation
+        ↓
+Business
+        ↓
+Business Record
+        ↓
+Rule & Form systems
+        ↓
+provider adapters
+```
+
+Nothing about Business Record, Content State, publishing provenance, progressive provisioning, Provider Commands, Workbench, HighLevel or Framer depends inherently on Better Auth.
+
+Supabase gives us Postgres, authentication, storage and Row Level Security in one stack.
+
+That is a good fit for Rule & Form.
+
+## And we don't actually lose Drizzle forever
+
+This was another useful finding.
+
+Meaning the future can be:
+
+```text
+Supabase Auth
+        ↓
+Supabase Postgres + RLS
+        ↓
+Drizzle typed queries where useful
+```
+
+We do not have to decide today that choosing MakerKit Lite means "no Drizzle ever."
+
+That's much better.
+
+---
+
+# What I would do for Rule & Form
+
+**Use MakerKit Lite as the real starting repository.**
+
+Not as a toy.
+
+Not as something we plan to throw away after Techstars.
+
+Use it as V1.
+
+Then build Rule & Form _on top of its conventions_.
+
+The stack becomes approximately:
+
+```text
+MakerKit Lite
+
+Next.js
+React
+TypeScript
+Tailwind / Shadcn
+Turborepo
+
+        +
+
+Supabase Auth
+PostgreSQL
+RLS
+Supabase Storage
+
+        +
+
+Vercel
+GitHub
+
+        ↓
+
+RULE & FORM
+
+Organization / tenant
+Business
+Business Record
+Content State
+Structured Intake
+Website Engine
+CMS Model
+Provisioning
+Business Hub
+Provider Adapters
+Framer
+HighLevel
+Inngest
+Workbench
+```
+
+That costs us essentially nothing to establish beyond hosting/service usage.
+
+## What Lite doesn't give us
+
+This is where we need discipline.
+
+But ask what Rule & Form actually needs for the accelerator demo and first customers.
+
+We need:
+
+```text
+Josh / contractor can sign in
+        ↓
+they belong to one Rule & Form tenant
+        ↓
+that tenant owns one Business initially
+        ↓
+Business Hub works
+```
+
+We do **not** presently need:
+
+```text
+Contractor invites 17 employees
+custom member roles
+seat billing
+team invitations
+organization switching
+enterprise SSO
+five-level RBAC
+self-service organization administration
+```
+
+That's exactly where I was making the mistake.
+
+I was effectively saying:
+
+> Lite doesn't contain MakerKit's complete B2B organization framework, therefore let's build all that framework ourselves.
+
+No.
+
+**We don't need all of it yet.**
+
+We need a narrow Rule & Form tenant model.
+
+## Our V1 tenancy can remain tiny
+
+For the architecture I would preserve:
+
+```text
+User
+    ↓
+Membership
+    ↓
+Organization
+    ↓
+Business
+```
+
+But V1 can enforce:
+
+```text
+1 User
+    ↓
+1 Membership
+    ↓
+1 Organization
+    ↓
+1 Business
+```
+
+No invitations.
+
+No role editor.
+
+No organization switcher.
+
+No employee administration.
+
+No complicated account UX.
+
+The model exists because the architecture needs the distinction.
+
+The **product surface** stays tiny.
+
+That is dramatically less work than rebuilding MakerKit Pro.
+
+We map our V1 tenancy into that richer layer.
+
+If we're doing that after Techstars with five demo accounts or ten early customers, that's manageable.
+
+If we intentionally wait until there are 5,000 customers, that's another story.
+
+So we simply don't wait that long.
+
+---
+
+# There is an even more interesting future fit
+
+MakerKit Pro Supabase v3 now has a **teams-only mode specifically for B2B applications**.
+
+That's basically Rule & Form.
+
+Long term:
+
+```text
+Contractor User
+        ↓
+Rule & Form Organization
+        ↓
+Business
+```
+
+No goofy "personal MakerKit workspace" visible to the contractor.
+
+That makes me substantially more comfortable with the Supabase path.
+
+---
+
+# How much of our Build Spec does this break?
+
+Very little conceptually.
+
+This is not:
+
+**"shit, throw away the architecture."**
+
+It's more like:
+
+```text
+OLD STACK IMPLEMENTATION
+
+Better Auth
+Drizzle
+generic PostgreSQL
+explicit application tenancy
+RLS optional defense
+
+                ↓
+
+NEW STACK IMPLEMENTATION
+
+Supabase Auth
+Supabase PostgreSQL
+Supabase RLS
+Supabase client initially
+Drizzle optional later
+```
+
+The pages requiring meaningful edits are primarily:
+
+**Stack, Repo & Environments**, **Accounts, Tenancy & Identity**, **Domain Model & Database Schema**, **Security, Permissions & Secrets**, and eventually **Naming, IDs & Conventions**.
+
+System Map barely changes.
+
+Provider Adapters doesn't care.
+
+Framer Publishing doesn't care.
+
+HighLevel doesn't care.
+
+Webhooks/Commands barely care.
+
+Business Record doesn't care.
+
+Content State doesn't care.
+
+Website Engine doesn't care.
+
+Progressive Provisioning doesn't care.
+
+That's a very healthy architecture.
+
+It means the underlying commodity infrastructure can change without redefining Rule & Form, exactly like our docs say it should.
+
+---
+
+# I would actually upgrade my opinion of the Lite route
+
+For **your particular situation**, with accelerator deadline, limited cash, heavy AI-assisted development, and a serious Build Spec already being created:
+
+### MakerKit Lite \+ Supabase: **9/10 choice right now**
+
+You get a well-organized codebase for free.
+
+You avoid spending $$279–$$349 before Rule & Form earns anything.
+
+You avoid weeks of generic authentication/UI setup.
+
+You still own all the code.
+
+You remain on Postgres.
+
+You get a strong database-level RLS story.
+
+You have a logical paid upgrade inside the **same Supabase family** later.
+
+We can reproduce the Rule & Form-specific routing instructions ourselves in Lite now, then get MakerKit's richer agent tooling if/when Pro becomes justified.
+
+## My recommendation now is stable
+
+**Do not buy MakerKit Pro today.**
+
+**Do not hand-build a SaaS starter from bare Next.js.**
+
+**Do use MakerKit Lite.**
+
+**Do adopt Supabase as the V1 infrastructure stack.**
+
+**Do plan any eventual MakerKit purchase as Pro Supabase, not Pro Drizzle.**
+
+**Do keep Rule & Form's domain isolated so upgrading the SaaS shell does not mean rewriting the product.**
+
+And now I would actually be comfortable setting up:
+
+```text
+MakerKit Lite
+    ↓
+our GitHub repo
+    ↓
+Supabase
+    ↓
+Vercel
+    ↓
+clean baseline
+```
+
+**today**, then stopping there while we finish Build Spec.
+
+This route preserves the entire reason we were excited about MakerKit in the first place.
+
+Three questions I think are worth settling next: Do we want me to audit the actual MakerKit Lite repository against our Build Spec line by line and identify exactly what it gives us versus what Rule & Form must add? Do we want to formally change the Build Spec stack from Better Auth/Drizzle to Supabase before writing any more architecture pages? Do we want the V1 Organization layer designed specifically so a future Pro Supabase migration is boring rather than traumatic?
+
+**Distilled insight:** MakerKit Lite should save us the boring work. Rule & Form should build the unique work. The mistake would be abandoning that advantage because Lite does not contain enterprise features we do not need yet.
+
+[1]: https://makerkit.dev/free-nextjs-saas-boilerplate?utm_source=chatgpt.com "Free Next.js SaaS Boilerplate - Open Source | MakerKit"
+
+[2]: https://github.com/makerkit/nextjs-saas-starter-kit-lite?utm_source=chatgpt.com "GitHub - makerkit/nextjs-saas-starter-kit-lite: Lite version of the Makerkit SaaS Starter Kit based on Next.js and Supabase · GitHub"
+
+[3]: https://makerkit.dev/docs/next-supabase-turbo/development/database-architecture?utm_source=chatgpt.com "Database Architecture in Makerkit"
+
+[4]: https://makerkit.dev/docs/next-supabase-turbo/installation/navigating-codebase?utm_source=chatgpt.com "Navigating the Next.js Supabase SaaS Kit Codebase"
+
+[5]: https://makerkit.dev/docs/next-supabase-turbo/installation/introduction?utm_source=chatgpt.com "Introduction to the Next.js Supabase SaaS Starter Kit"
+
+[6]: https://makerkit.dev/docs/next-supabase-turbo/recipes/drizzle-supabase?utm_source=chatgpt.com "Using Drizzle as a client for interacting with Supabase"
+
+[7]: https://makerkit.dev/docs/next-supabase-turbo/configuration/feature-flags-configuration?utm_source=chatgpt.com "Feature Flags Configuration in the Next.js Supabase SaaS Kit"
+
+[8]: https://makerkit.dev/docs/next-supabase-turbo/installation/ai-agents?utm_source=chatgpt.com "AI Agentic Development | Next.js Supabase Turbo"

@@ -94,6 +94,7 @@
             "group": "Product Decisions",
             "pages": [
               "product-decisions/structured-intake-as-economic-architecture",
+              "untitled-page-13",
               "product-decisions/existing-site-migration",
               "product-decisions/design-directions",
               "product-decisions/progressive-provisioning",
@@ -180,7 +181,8 @@
           "untitled-page-8",
           "untitled-page-9",
           "untitled-page-10",
-          "untitled-page-11"
+          "untitled-page-11",
+          "untitled-page-12"
         ]
       },
       {
@@ -188,7 +190,8 @@
         "hidden": true,
         "pages": [
           "untitled-page-6",
-          "untitled-page-10"
+          "untitled-page-10",
+          "untitled-page-12"
         ]
       }
     ]

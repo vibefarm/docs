@@ -1,0 +1,256 @@
+---
+title: "Vertical Blueprints"
+description: "How Rule & Form encodes category knowledge once, asks each business only where it differs, and turns structured decisions into websites and operating configuration."
+---
+
+Rule & Form will maintain a Vertical Blueprint for each supported trade.
+
+A Vertical Blueprint is the versioned model of what Rule & Form already knows about a category: its common services, customer types, specialties, proof points, availability patterns, offers, website structures, content requirements, search structure, and operational implications.
+
+It is not a website template and it is not a collection of chips. Chips are one interface for resolving a business against the blueprint.
+
+The system should already know the category. The business should only have to tell us where it differs.
+
+For a plumbing company, Rule & Form should not begin by asking the owner to describe plumbing from scratch. It should begin with a researched model of the plumbing category, then ask the business to confirm which parts are true, reject what is not, supply exact facts, and add exceptions.
+
+Plumbing Blueprint ↓ Business selections ↓ Business-specific state ↓ Website \+ operating configuration
+
+The same principle applies to HVAC, roofing, electrical, remodeling, and every vertical Rule & Form supports.
+
+Why
+
+Traditional website intake repeatedly asks each customer to reconstruct knowledge the delivery company should already possess.
+
+A plumber is asked what services a plumbing company might provide. A roofer is asked what belongs on a roofing homepage. An HVAC contractor is given blank text fields and asked to decide what the website should say.
+
+That work is slow for the customer, expensive for the provider, difficult to normalize, and largely discarded when the next customer arrives.
+
+Rule & Form should encode that category knowledge once.
+
+The business then provides the information only it can know: what it actually offers, where it operates, what credentials it holds, how it works, what makes it different, which claims are true, and where it departs from the category default.
+
+Blank-slate intake
+
+Customer ↓ Describe the business ↓ Explain the trade ↓ Decide what matters ↓ Provider interprets it ↓ Website
+
+Vertical Blueprint
+
+Rule & Form already knows the category ↓ Customer confirms what is true ↓ Customer supplies facts and exceptions ↓ System resolves the business ↓ Website \+ operating system
+
+This is necessary for the economics of the product.
+
+If every website begins as a bespoke strategy exercise, fulfillment remains bespoke. If every business begins from a maintained vertical model, delivery becomes increasingly structured while the final output can still represent the individual company.
+
+It also creates a foundation for learning across customers. A system cannot improve category defaults very well when every implementation is structurally unrelated. Controlled starting points make outcomes comparable.
+
+How The blueprint owns category knowledge
+
+Each Vertical Blueprint defines the bounded choices and rules that are generally relevant to that trade.
+
+For plumbing, that may include:
+
+Services
+
+- Drain Cleaning
+- Water Heater Repair
+- Water Heater Installation
+- Tankless Water Heaters
+- Sewer Repair
+- Sewer Replacement
+- Leak Detection
+- Repiping
+- Fixtures
+- Garbage Disposals
+- Water Filtration
+- Commercial Plumbing
+- Emergency Plumbing
+
+Customer Types
+
+- Residential
+- Commercial
+- Property Management
+- Builders
+
+Availability
+
+- Scheduled Service
+- Same-Day Service
+- Evening Availability
+- Weekend Availability
+- 24/7 Emergency
+
+Proof
+
+- Licensed
+- Insured
+- Family Owned
+- Locally Owned
+- Years in Business
+- Financing
+- Warranty
+- Upfront Pricing
+
+Specialties
+
+- Hydro Jetting
+- Trenchless Sewer
+- Tankless Systems
+- Leak Detection
+- Water Treatment
+
+The production blueprint will contain more than labels. It can also define relationships, conditional questions, content requirements, website mappings, search implications, and operational consequences.
+
+A selection should have a stable meaning inside the system.
+
+Water Heater Repair selected ↓ Business Record fact ↓ Homepage service eligibility ↓ Service-page eligibility ↓ Navigation eligibility ↓ Search/content requirements ↓ Lead categorization ↓ Future workflow context
+
+The same decision should not be rediscovered independently by every downstream system.
+
+Intake resolves the business against the blueprint
+
+Structured Intake presents the relevant parts of the blueprint and records the business-specific result.
+
+The interaction should favor recognition over composition.
+
+What services do you offer?
+
+\[✓ Drain Cleaning\] \[✓ Water Heater Repair\] \[  Sewer Repair\] \[✓ Leak Detection\] \[  Repiping\] \[  Commercial Plumbing\]
+
+\[ \+ Something else \]
+
+The objective at this stage is to establish what is true, not to make the customer edit finished marketing copy.
+
+A service description should only appear during selection when it is necessary to clarify what the choice means. The normal intake should not put a paragraph beneath every chip and ask the customer to implicitly approve copy they were never asked to write.
+
+INTAKE What is true?
+
+↓
+
+STRUCTURED STATE What applies to this business?
+
+↓
+
+CONTENT SYSTEM How should those truths be expressed?
+
+↓
+
+PREVIEW Does the finished result represent the business correctly?
+
+This reduces unnecessary decisions and keeps factual approval separate from content production.
+
+Exact facts remain exact fields
+
+Not every answer belongs in a chip.
+
+Rule & Form should use bounded selections where the domain is known, exact fields where the answer is a fact, and free text where reality does not fit the model.
+
+Bounded domain → chips / selections
+
+Exact fact → structured field
+
+Exception or identity → free text
+
+Examples of exact facts include business name, phone number, years in business, license number, service area, hours, financing provider, address, review count, and warranty terms.
+
+Freeform input remains available because no category model will capture every business. It is the escape hatch, not the primary interface.
+
+AI resolves ambiguity rather than inventing the category
+
+AI can make the experience substantially faster without becoming the source of truth.
+
+A business may optionally provide a short description:
+
+"We're family owned and mostly residential. A lot of our work is drains, water heaters and sewer. We take evening calls but we're not a 24/7 company."
+
+Rule & Form can classify that input against the known plumbing blueprint:
+
+Suggested
+
+\[✓ Residential\] \[✓ Drain Cleaning\] \[✓ Water Heaters\] \[✓ Sewer Work\] \[✓ Family Owned\] \[✓ Evening Availability\]
+
+Not suggested
+
+\[  Commercial\] \[  24/7 Emergency\]
+
+The business confirms the result.
+
+AI is useful here because it is resolving messy human language into a controlled model. It is not being asked to invent the model itself or silently create business facts.
+
+Content is produced after the facts are known
+
+Vertical Blueprints may contain reusable content primitives, required concepts, section logic, and default structures, but Rule & Form does not need to publish the identical paragraph for every business that selects the same service.
+
+The system can combine:
+
+# Vertical knowledge \+ approved business facts \+ content rules \+ site context
+
+business-specific expression
+
+A water-heater service may have a stable underlying content model while its final expression reflects the company's actual service area, capabilities, availability, credentials, positioning, and other approved facts.
+
+The customer should review the finished result at the point where the result is useful to review.
+
+The blueprint can govern structure as well as content
+
+Vertical Blueprints are not limited to service lists.
+
+A blueprint can influence which modules are appropriate, which sections become prominent, what supporting pages are required, and which conversion paths deserve priority.
+
+Plumbing Blueprint \+ Business State
+
+↓
+
+Website Manifest
+
+Hero Primary Services Trust / Proof Emergency or Availability Reviews About Financing Service Area FAQ Primary CTA Footer
+
+The manifest can vary according to the resolved business without requiring the contractor to become the information architect.
+
+Blueprints are versioned
+
+A Vertical Blueprint is maintained product state, not an undocumented collection of defaults inside UI components.
+
+Plumbing Blueprint v1.0 ↓ Plumbing Blueprint v1.1 ↓ Plumbing Blueprint v1.2
+
+A blueprint version should identify the category model used when a business was resolved or regenerated.
+
+Changes must be deliberate. Adding a new service category, changing a default section rule, or improving a content primitive should not silently mutate every existing business.
+
+Existing customer state remains distinguishable from the evolving category model.
+
+Standardization creates a learning system
+
+Controlled structure makes cohort learning possible.
+
+If every plumbing website is completely bespoke, outcome data has weak explanatory value because too many variables change at once.
+
+If sites derive from known blueprint versions and controlled variants, Rule & Form can eventually measure patterns with much greater confidence.
+
+More plumbing customers ↓ More structured selections ↓ More known site configurations ↓ More observed outcomes ↓ Better category decisions ↓ Plumbing Blueprint vNext ↓ Better defaults
+
+The system can improve what it recommends, which modules it prioritizes, how it structures common service combinations, what information it asks for, and eventually which controlled variants perform better for particular business profiles.
+
+The useful asset is not the questionnaire.
+
+The useful asset is the maintained model of the vertical and the evidence accumulated around it.
+
+Consequences
+
+Vertical Blueprints make structured intake a core product system rather than a form-building exercise.
+
+They reduce the amount of knowledge each customer must supply, reduce fulfillment interpretation, make business data reusable, and give Rule & Form a controlled basis for generating websites and operating configuration.
+
+They also impose discipline.
+
+Rule & Form must research each supported vertical deeply enough to maintain a credible category model. Blueprint changes need versioning. Business-specific truth must remain separate from category defaults. AI suggestions must remain suggestions until confirmed. Exceptions must be capturable without corrupting the shared taxonomy.
+
+The system must also resist false personalization. Every plumber may begin from much of the same plumbing model, and that is intentional. Individualization comes from the business's selected facts, exact data, exceptions, assets, positioning, and approved expression.
+
+The final customer does not need to know which parts began as defaults. They need the resulting website and operating system to accurately represent their business.
+
+Over time, this creates a compounding product asset:
+
+Category knowledge ↓ Structured customer decisions ↓ Reusable business state ↓ Controlled implementations ↓ Observed outcomes ↓ Improved category knowledge
+
+Rule & Form does not ask a plumber how to structure a plumbing website. It already knows the category. The contractor confirms what is true about the business, and the system turns those decisions into the site and operating configuration.
