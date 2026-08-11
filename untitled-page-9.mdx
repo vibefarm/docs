@@ -1,0 +1,509 @@
+---
+title: "WRITING PLAN FORWARD"
+---
+
+Yes. **You are on the right track.** I would continue this route.
+
+But I would make one important adjustment to the process:
+
+> **Do not wait until every Build Spec page is written before doing the first cross-spec integration pass.**
+
+That is the only part of your proposed plan I would change.
+
+The best path is **progressive specification \+ periodic integration gates \+ just-in-time implementation**.
+
+## First: the stack still checks out in the real world
+
+I re-verified the current stack rather than trusting our earlier decision.
+
+So there is **no current stack-level discovery that makes me think we picked the wrong foundation.**
+
+I would proceed with:
+
+**MakerKit \+ Next.js \+ React \+ TypeScript \+ Drizzle \+ Postgres/Supabase \+ Better Auth \+ Inngest \+ Vercel \+ GitHub.**
+
+Framer and HighLevel stay behind the provider boundaries we've already designed.
+
+---
+
+# And yes: Build Spec should become the engineering contract
+
+I think we made the right call there.
+
+The rest of the docs answer things like:
+
+- why the company exists
+- why the economics work
+- product decisions
+- distribution
+- competitive framing
+- investor diligence
+- rationale behind architecture
+
+Those are useful context.
+
+But they should **not all have equal authority over implementation**.
+
+I'd establish this hierarchy explicitly:
+
+```text
+1. Working repository
+   What actually exists.
+
+2. Build Spec
+   Engineering intent, contracts, invariants and accepted decisions.
+
+3. Product Decisions
+   Rationale behind important choices.
+
+4. Rest of documentation
+   Business/product context, not implementation authority.
+```
+
+There is a nuance between #1 and #2.
+
+If the repository and Build Spec disagree, the agent must **surface the discrepancy**. It should not blindly assume either one is automatically correct and rewrite the other.
+
+That's already basically what your Stack page says.
+
+For Claude Code/Codex, I would make `AGENTS.md` extremely explicit:
+
+> For engineering work, treat `/architecture/**` as the normative documentation set. Consult Product Decisions only when referenced by the relevant Build Spec or when product rationale is necessary. Other public documentation is contextual and must not override Build Spec contracts.
+
+That is clean.
+
+And yes, MCP access should primarily expose:
+
+**repository \+ Build Spec**
+
+rather than dumping your entire investor site into an implementation agent's context every time.
+
+---
+
+# Your proposed writing method is fundamentally correct
+
+You do **not** need to perfectly reconcile every sentence while drafting page 6 of 34.
+
+That would slow us to death.
+
+Architecture discovery naturally works like this:
+
+```text
+Write System Map
+↓
+discover implications
+
+Write Accounts
+↓
+discover stronger tenancy rules
+
+Write Domain Model
+↓
+discover an earlier assumption needs refinement
+
+Write Business Record
+↓
+discover terminology collision
+
+Write Provider Adapters
+↓
+refine System Map boundary
+
+etc.
+```
+
+Trying to prevent any temporary inconsistency during that process is unrealistic.
+
+So yes:
+
+**write strongly now → integrate later → distill later → verify against code later.**
+
+That is the right process.
+
+What I would _not_ do is:
+
+```text
+write 34 pages independently
+↓
+never compare them
+↓
+finish page 34
+↓
+discover 17 conceptual conflicts
+```
+
+Instead, use **integration checkpoints**.
+
+---
+
+# I would structure the next phase like this
+
+### Pass 1: Foundation contract
+
+You already have:
+
+- System Map
+- Stack, Repo & Environments
+- Accounts, Tenancy & Identity
+
+Now write:
+
+- **Domain Model & Database Schema**
+- **Naming, IDs & Conventions**
+
+Then stop briefly.
+
+Consume those five together.
+
+Ask:
+
+- Does Organization mean the same thing everywhere?
+- Does Business ownership line up physically with the schema?
+- Are IDs and provider mappings consistent?
+- Does the tenant model survive the schema?
+- Are naming conventions consistent?
+- Does anything in Stack contradict the actual data model?
+
+This is a **small integration pass**, not a rewrite.
+
+Once those five cohere, you've established the foundation the rest can build on.
+
+---
+
+### Pass 2: Core product model
+
+Then write:
+
+- Business Record
+- Structured Intake Engine
+- Capability & Provisioning State
+- Website Engine
+- CMS Content Model
+- Business Hub
+- Lead, Customer & Job Model
+
+Then consume **Foundation \+ Product Systems together**.
+
+That is the point where we'll catch questions like:
+
+> Does Lead belong under Organization or Business?
+
+> Does Business Record versioning agree with schema versioning?
+
+> Is Content State its own aggregate?
+
+> Are provisioning states stored or derived?
+
+> Where do custom intake service entries live?
+
+> What does a Site actually belong to?
+
+Those are exactly the conflicts worth discovering before large amounts of code exist.
+
+Again, we don't polish prose. We reconcile the model.
+
+---
+
+### Pass 3: execution machinery
+
+Then:
+
+- Provider Adapters
+- HighLevel Integration
+- Framer Publishing
+- Webhooks, Events & Command Queue
+- Sync, Projections & Reconciliation
+- Workflow & Orchestration Engine
+
+Then integrate those against Foundation \+ Product Systems.
+
+Now we're testing:
+
+```text
+canonical domain
+vs.
+external execution
+```
+
+This is where provider IDs, commands, event ingestion, retries, reconciliation, state projections and idempotency get reconciled.
+
+---
+
+### Pass 4: control \+ delivery
+
+Then:
+
+- validation
+- failure handling
+- locks
+- permissions
+- audit
+- instrumentation
+- MVP
+- acceptance criteria
+- fixtures
+- release
+
+Then do the **first complete corpus review**.
+
+That's where we aggressively look for:
+
+- contradictions
+- duplicated ownership
+- undefined concepts
+- terms that drifted
+- V1/future confusion
+- impossible acceptance criteria
+- architecture that code can't realistically implement
+- pages that should delegate instead of repeat
+
+**Then** do the big distillation pass.
+
+That is where I expect us to cut a lot of words.
+
+---
+
+# But I would not wait for all of that before touching code
+
+This matters because you said we need to actually start building soon.
+
+I would **begin the application foundation before the whole Build Spec is complete.**
+
+You already know enough to safely do:
+
+```text
+Clone MakerKit
+↓
+Get it running locally
+↓
+Create Supabase project
+↓
+Connect Postgres
+↓
+Deploy baseline to Vercel
+↓
+Verify Better Auth
+↓
+Verify Organization/account shell
+↓
+Establish env separation
+↓
+Establish CI / preview workflow
+```
+
+None of that requires us to have finalized the Framer publishing specification or Webhook reconciliation model.
+
+So I don't want documentation to become another form of procrastination.
+
+### But before we create our real Rule & Form domain tables
+
+I want these written:
+
+**Domain Model & Database Schema** **Naming, IDs & Conventions** **Business Record**
+
+Those three are foundational enough that coding them first and specifying them afterward would be backwards.
+
+Then we can start creating:
+
+```text
+organizations
+businesses
+business_records
+sites
+integrations
+capabilities / provisioning
+...
+```
+
+with much more confidence.
+
+### Before building the intake engine
+
+Write:
+
+**Structured Intake Engine**
+
+### Before Framer integration
+
+Write:
+
+**Website Engine \+ CMS Content Model \+ Framer Publishing**
+
+### Before HighLevel integration
+
+Write:
+
+**Provider Adapters \+ HighLevel Integration \+ Webhooks/Events/Command Queue**
+
+That's the workflow I would use.
+
+**Spec just ahead of implementation.**
+
+Not six months ahead.
+
+Not after the fact.
+
+---
+
+# One real stack issue we should explicitly resolve
+
+There is one thing I want recorded because this is exactly the sort of detail a Build Spec should catch.
+
+We're using **Better Auth**, not Supabase Auth.
+
+That's fine.
+
+Because Better Auth owns our identity, we should **not casually assume**:
+
+> “We'll just use Supabase Storage from the browser and `auth.uid()` will know our Better Auth user.”
+
+It won't magically happen.
+
+We need to choose deliberately between something like:
+
+**A. Server-mediated storage for V1**
+
+Browser → Rule & Form authenticated server → validate tenant → Storage
+
+or
+
+**B. Issue compatible/custom JWTs for direct Storage access**
+
+or
+
+**C. Use ordinary S3-compatible storage with signed URLs and keep Supabase only as Postgres.**
+
+My preference for V1 would probably be **server-mediated uploads / signed access**, because it keeps our Better Auth tenant boundary authoritative and avoids building a second authorization system purely to upload plumber photos.
+
+That's not a blocker.
+
+It's exactly the kind of concrete integration decision we want the Build Spec process to surface.
+
+---
+
+# So, is the method working?
+
+**Yes. Strongly.**
+
+I would not change course.
+
+What has happened so far is actually what I want to see:
+
+System Map established the architecture.
+
+Accounts forced us to sharpen tenant ownership.
+
+Stack clarified what we rent versus own.
+
+Provider Ownership reinforced the adapter strategy.
+
+AI Discovery extended the Business Record into a new output domain without changing the underlying model.
+
+Those pages are **converging**, not diverging.
+
+That tells me the architecture has a stable center.
+
+If every new page required us to rewrite the previous one from scratch, I would tell you we had a problem.
+
+We don't.
+
+---
+
+# My recommended operating loop
+
+Use this:
+
+```text
+WRITE
+Build the next logical cluster of specifications.
+
+↓
+
+
+INTEGRATE
+Consume that cluster plus its dependencies.
+Find actual conceptual conflicts.
+Fix only important ones.
+
+↓
+
+
+BUILD
+Implement the parts that are sufficiently specified.
+
+↓
+
+
+VERIFY
+Compare implementation against Build Spec.
+Update either code or spec deliberately.
+
+↓
+
+
+CONTINUE
+Write the next cluster.
+
+↓
+
+
+FINAL SYSTEM PASS
+Once the corpus is materially complete:
+consume everything together,
+remove contradictions,
+establish concept ownership,
+condense duplication,
+sharpen V1 boundaries,
+link proof,
+and turn it into the final engineering contract.
+```
+
+That is the process I would use if I were responsible for actually getting this system shipped.
+
+## One thing I would _not_ do
+
+Don't say:
+
+> “No code until every Build Spec page is perfect.”
+
+That would be a mistake.
+
+And don't say:
+
+> “We'll ignore all inconsistencies until all 34 pages are finished.”
+
+Also a mistake.
+
+The right middle is:
+
+> **The spec stays slightly ahead of the build, and we reconcile it at natural architectural boundaries.**
+
+That lets documentation improve the engineering instead of becoming a separate project.
+
+## Bottom line
+
+**Yes, keep knocking out Build Spec pages.**
+
+The stack remains credible and internally compatible. The architecture we've written so far is strong enough to continue extending. The Build Spec is the right place to establish the engineering contract, and using it as the primary MCP/agent context is the right model.
+
+Just add **small integration passes after each major subsystem cluster**, and start the commodity application bootstrap before the entire corpus is finished.
+
+If it were my schedule, I would now do:
+
+**Domain Model & Database Schema → Naming, IDs & Conventions → short Foundation reconciliation → clone MakerKit and get the baseline app live.**
+
+That is the exact point where I think documentation should start turning into software.
+
+[1]: https://makerkit.dev/docs/nextjs-drizzle/better-auth/setup?utm_source=chatgpt.com "Next.js Drizzle - Better Auth Setup and Configuration"
+
+[2]: https://vercel.com/docs/git?utm_source=chatgpt.com "Deploying Git Repositories with Vercel"
+
+[3]: https://supabase.com/docs/guides/database/overview?utm_source=chatgpt.com "Database | Supabase Docs"
+
+[4]: https://www.inngest.com/docs/guides/error-handling?utm_source=chatgpt.com "Error Handling & Retries in Inngest - Inngest Docs"
+
+[5]: https://makerkit.dev/docs/nextjs-drizzle/better-auth/overview?utm_source=chatgpt.com "Next.js Drizzle - Authentication Configuration"
+
+[6]: https://supabase.com/docs/guides/database/postgres/row-level-security?utm_source=chatgpt.com "Row Level Security | Supabase Docs"
+
+[7]: https://supabase.com/docs/guides/storage/schema/custom-roles?utm_source=chatgpt.com "Custom Roles | Supabase Docs"

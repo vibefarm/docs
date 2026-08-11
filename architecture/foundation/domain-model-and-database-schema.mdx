@@ -1,3 +1,1280 @@
 ---
 title: "Domain Model & Database Schema"
 ---
+
+Paste this directly into the Mintlify page. There is **no outer code fence**. Only the individual architecture blocks use fenced `text`.
+
+---
+
+## title: "Domain Model & Database Schema"
+
+# Domain Model & Database Schema
+
+The database is the durable representation of Rule & Form's domain.
+
+It must preserve tenant ownership, canonical identity, version history, provider independence, and publishing provenance even when application code, providers, or product surfaces change.
+
+The schema should make the architecture difficult to violate accidentally.
+
+> **For implementation:** this page defines domain boundaries, ownership rules, relationships, and database invariants. It does not freeze every final column, enum, index, or storage representation. Later Build Spec pages may add detail inside these boundaries. They must not casually redefine them.
+
+## Domain at a glance
+
+```text
+User
+  ↓
+Membership
+  ↓
+Organization                    ← tenant boundary
+  ↓
+Business                        ← represented company
+  ├── Business Record           ← canonical business facts
+  └── Site(s)
+       ├── Content State        ← approved/generated/manual content state
+       └── Published Snapshots  ← immutable publishing provenance
+
+Business
+  ├── Customers
+  ├── Leads
+  ├── Jobs
+  ├── Conversations
+  ├── Appointments
+  ├── Capability / Provisioning State
+  └── Integration Connections / Provider Mappings
+```
+
+These are different concepts even when V1 commonly has one User, one Organization, one Business, and one Site.
+
+The simple case does not collapse the model.
+
+## Schema ownership
+
+Authentication infrastructure and Rule & Form application data have separate ownership.
+
+MakerKit and Better Auth provide the core identity structures used by the application, including the authenticated User, Organization, Membership relationship, sessions, and authentication accounts.
+
+Rule & Form extends those structures with its own domain tables.
+
+Conceptually:
+
+```text
+Framework-managed identity
+
+User
+Organization
+Membership
+Session
+Authentication Account
+Verification / identity infrastructure
+
+              ↓ referenced by
+
+Rule & Form application domain
+
+Business
+Business Record
+Site
+Content State
+Published Snapshot
+Customer
+Lead
+Job
+Conversation
+Appointment
+Capability State
+Integration Connection
+Provider Mapping
+Publishing / provisioning execution
+Events / commands / audit history
+```
+
+Rule & Form does not create a second tenant model beside the framework Organization.
+
+Framework table names may differ from Rule & Form domain terminology where required by the authentication library. Those names do not redefine the domain.
+
+In particular, an authentication `account` is not a Rule & Form customer account or tenant.
+
+**Organization is the tenant boundary.**
+
+## Tenant ownership
+
+Every customer-owned Rule & Form record belongs to exactly one Organization.
+
+Tenant-owned application tables carry `organization_id` unless there is a documented reason that the record is not customer-owned.
+
+For Business-owned records, `business_id` identifies the represented business while `organization_id` establishes the tenant boundary.
+
+```text
+organization_id
+    ↓
+tenant ownership
+
+business_id
+    ↓
+domain ownership inside that tenant
+```
+
+Business is not a second tenant key.
+
+Knowing a `business_id` does not grant access to that Business. The application verifies that the Business belongs to the authorized Organization and applies that Organization scope in the database operation itself.
+
+Conceptually:
+
+```text
+Authorized Organization A
+        ↓
+requested Business
+        ↓
+Business.organization_id == Organization A
+        ↓
+tenant-scoped query
+```
+
+A row must never be able to claim ownership by Organization A while referencing a Business owned by Organization B.
+
+Where practical, database foreign keys and scoped uniqueness constraints should make that state impossible rather than relying only on application code to avoid creating it.
+
+## Identity and tenant entities
+
+### User
+
+A **User** is an authenticated human who can access the Rule & Form application.
+
+A User is application identity.
+
+A User is not:
+
+- the contractor's Business
+- a homeowner or contractor customer
+- a provider contact
+- a provider credential
+- a tenant by themselves
+
+A User can eventually belong to more than one Organization.
+
+Deleting, disabling, or changing a User must not silently redefine ownership of the Organization's business data.
+
+### Organization
+
+An **Organization** is the tenant boundary.
+
+All customer-owned Rule & Form application data resolves to one Organization.
+
+```text
+Organization
+  ├── Memberships
+  ├── Business
+  │    ├── Site
+  │    ├── Business Record
+  │    └── operational records
+  └── Integration / capability state
+```
+
+V1 may expose one Business per Organization.
+
+The schema must not require that relationship to remain one-to-one forever.
+
+An Organization may eventually own multiple Businesses without changing the identity or tenancy model.
+
+### Membership
+
+A **Membership** connects a User to an Organization and carries customer-side authority.
+
+```text
+User
+  ↓
+Membership
+  ↓
+Organization
+```
+
+Membership is a relationship, not a property baked globally into the User.
+
+A User may have different authority in different Organizations.
+
+Membership lifecycle and Business lifecycle are independent.
+
+Removing a Membership removes that relationship's authority. It does not delete the Organization's Business data.
+
+### Business
+
+A **Business** is the contractor or company Rule & Form represents.
+
+Business is a stable Rule & Form domain entity underneath an Organization.
+
+```text
+Organization
+  ↓
+Business
+  ├── Business Record
+  ├── Site
+  ├── Customers
+  ├── Leads
+  ├── Jobs
+  └── operational systems
+```
+
+The Business row should remain small and structurally stable.
+
+It establishes identity, ownership, lifecycle, and relationships.
+
+It should not become a duplicate container for canonical business facts already owned by the Business Record.
+
+For example, the canonical public business phone number should not independently live in both `businesses.phone` and the Business Record unless one of those values has a clearly different meaning and authoritative writer.
+
+**One fact. One authority.**
+
+## Business and Site
+
+A **Site** is a Rule & Form website identity.
+
+A Site belongs to one Business and one Organization.
+
+```text
+Organization
+  ↓
+Business
+  ├── Main Site
+  ├── Product Site
+  └── Future Site
+```
+
+V1 may provision one Site for most Businesses.
+
+The database must support one Business owning multiple Sites.
+
+A Framer project, deployment, domain, or CMS workspace does not define Site identity inside Rule & Form.
+
+Those are external resources associated through publishing configuration or provider mappings.
+
+The Rule & Form Site remains stable even if the publishing provider changes.
+
+A Site may carry site-specific configuration such as publication state, domains, locale configuration, template assignment, and pointers to current approved or published state where appropriate.
+
+Canonical business facts remain in the Business Record.
+
+## Business Record
+
+The **Business Record** is the canonical representation of facts about a Business.
+
+It owns structured facts such as business identity, services, service areas, credentials, contact information, hours, languages, offers, financing, photos, preferences, and other structured attributes defined by the Business Record specification.
+
+Operational activity does not belong inside it.
+
+```text
+Business Record
+
+contains:
+business facts
+services
+service areas
+credentials
+hours
+offers
+languages
+contact facts
+structured preferences
+
+does not contain:
+leads
+messages
+appointments
+provider credentials
+capability state
+publishing runs
+audit history
+```
+
+There is one logical Business Record for a Business.
+
+That logical record has version history.
+
+## Business Record versions
+
+The current Business Record must not be the only recoverable representation of canonical business facts.
+
+Changes create identifiable revisions.
+
+Conceptually:
+
+```text
+Business
+  ↓
+Business Record
+  ├── Version 1
+  ├── Version 2
+  ├── Version 3
+  └── Version 4 ← current
+```
+
+Historical versions used by a published output must remain recoverable.
+
+Two kinds of versioning are distinct.
+
+```text
+Record version
+"revision 14 of this Business Record"
+
+Schema version
+"this revision conforms to Business Record schema v3"
+```
+
+The record version tracks change to one Business's data.
+
+The schema version tracks the shape and interpretation of that data.
+
+They are not interchangeable counters.
+
+The exact physical representation may evolve. V1 may use a schema-validated structured payload with normalized relational tables where independent identity, querying, constraints, or lifecycle justify them.
+
+The invariant is more important than whether every field is stored as a relational column on day one:
+
+**a Business Record revision must be identifiable, validated, tenant-owned, and reproducible.**
+
+## Content State
+
+The Business Record says what is true.
+
+**Content State** says what Rule & Form has approved to say.
+
+Content State is separate because generated website content has different lifecycle rules from canonical business facts.
+
+It may include:
+
+- generated values
+- approved values
+- manual edits
+- explicit overrides
+- locks
+- generation metadata
+- content-specific state needed for safe regeneration
+
+Content State should be scoped to the Site whose output it controls.
+
+```text
+Business
+  ↓
+Business Record
+  ↓
+Site
+  ↓
+Content State
+```
+
+This allows one Business to share canonical facts while different Sites express those facts differently.
+
+Changing website copy must not change the canonical Business Record merely because the content refers to the same subject.
+
+Likewise, changing a Business Record fact must not blindly overwrite approved Content State.
+
+## Content State versions
+
+Content used for publication requires durable version identity.
+
+```text
+Site
+  ↓
+Content State
+  ├── Version 1
+  ├── Version 2
+  ├── Version 3
+  └── Version 4 ← current
+```
+
+A Content State revision should be recoverable when another immutable object, such as a Published Snapshot, references it.
+
+Detailed field-level storage for edits, locks, generated values, and overrides belongs in the content and regeneration specifications.
+
+This page fixes the architectural requirement:
+
+**published content must resolve to a specific version of approved Content State.**
+
+## Published Snapshots
+
+A **Published Snapshot** records the exact state that produced a publication.
+
+It is immutable provenance.
+
+```text
+Published Snapshot
+
+Business
+Site
+Business Record version
+Content State version
+Template version
+Mapping version
+publishing target
+provider output references
+publication result
+timestamps / execution references
+```
+
+A snapshot does not become mutable because the Business Record later changes.
+
+A snapshot does not become mutable because Content State later changes.
+
+A snapshot does not become mutable because the Framer project later changes.
+
+The system must be able to answer:
+
+**What exact Rule & Form state produced what was published?**
+
+A Site may keep a reference to its current live Published Snapshot for fast access.
+
+That pointer may change.
+
+The snapshot it points to does not.
+
+## Publishing execution and publishing provenance
+
+A publishing execution and a Published Snapshot are related but different.
+
+A **Publishing Run** represents durable work.
+
+A **Published Snapshot** represents the inputs and result associated with a publication state.
+
+```text
+Publish requested
+      ↓
+Published Snapshot captured
+      ↓
+Publishing Run
+      ↓
+provider steps
+      ↓
+success / failure / retry
+      ↓
+successful snapshot may become current live state
+```
+
+A failed execution must not erase the state it attempted to publish.
+
+A retry must not create ambiguity about which state was being published.
+
+Detailed publishing-run steps, idempotency, retry behavior, and provider execution belong in the publishing and workflow specifications.
+
+## Operational domain
+
+Business facts and business activity remain separate domains.
+
+Operational records include the activity created as Rule & Form receives inquiries, communicates with customers, books work, tracks opportunities, and interacts with external systems.
+
+Core operational entities include:
+
+```text
+Business
+  ├── Customer
+  ├── Lead
+  ├── Job
+  ├── Conversation
+  └── Appointment
+```
+
+These are Rule & Form entities even when a provider participates in their execution.
+
+### Customer
+
+A **Customer** represents a person or organization interacting with the contractor as a customer or prospective customer.
+
+A Customer is not a Rule & Form User.
+
+```text
+Rule & Form User
+    authenticated application identity
+
+Customer
+    contractor's customer or prospect
+```
+
+Customer identity may be assembled from website forms, calls, messages, imports, bookings, or provider synchronization.
+
+Final matching, deduplication, household/company modeling, and identity-resolution rules belong in the Lead, Customer & Job specification.
+
+### Lead
+
+A **Lead** represents a customer-acquisition opportunity or inquiry inside Rule & Form.
+
+A website inquiry creates or maps to a Rule & Form Lead even when its information is also sent to HighLevel or another provider.
+
+A HighLevel opportunity ID is not the Lead's primary identity.
+
+Lead lifecycle, stages, qualification, attribution, and conversion rules belong in the operational-domain specification.
+
+### Job
+
+A **Job** represents work associated with a Business and generally a Customer.
+
+A Job may originate from a Lead, provider import, internal action, or future system.
+
+The domain should not require every Job to have been created by the same acquisition path.
+
+The exact relationship between Leads and Jobs remains a business-rule decision.
+
+### Conversation
+
+A **Conversation** groups communication activity associated with a Business and, where resolved, a Customer or Lead.
+
+Conversations may contain messages, calls, voicemail activity, or provider-derived communication events depending on the later communications model.
+
+A HighLevel conversation is provider infrastructure.
+
+The Rule & Form Conversation remains the application object exposed to Rule & Form systems.
+
+### Appointment
+
+An **Appointment** represents scheduled activity in the Rule & Form operational domain.
+
+The scheduling provider may execute availability, booking, modification, and synchronization.
+
+Provider calendar event IDs remain mappings.
+
+Rule & Form retains its own appointment identity and tenant ownership.
+
+## Preliminary operational relationships
+
+The exact business rules are not frozen here, but the database should support relationships such as:
+
+```text
+Customer
+  ├── Lead(s)
+  ├── Job(s)
+  ├── Conversation(s)
+  └── Appointment(s)
+
+Lead
+  ├── may reference Customer
+  ├── may produce Job
+  ├── may participate in Conversation
+  └── may participate in Appointment
+
+Job
+  ├── belongs to Business
+  ├── may reference Customer
+  └── may reference originating Lead
+```
+
+Nullable relationships should reflect legitimate domain states, not incomplete engineering.
+
+For example, an inbound phone call may create operational activity before customer identity has been fully resolved.
+
+The later operational specification decides those rules.
+
+## Rule & Form IDs
+
+Every first-class Rule & Form domain entity has a Rule & Form identifier.
+
+Examples include:
+
+```text
+Business ID
+Site ID
+Business Record ID
+Business Record Version ID
+Content State ID
+Content State Version ID
+Published Snapshot ID
+Customer ID
+Lead ID
+Job ID
+Conversation ID
+Appointment ID
+Integration Connection ID
+```
+
+Rule & Form IDs identify Rule & Form objects.
+
+They remain stable when a provider changes.
+
+The exact identifier format belongs in **Naming, IDs & Conventions**.
+
+This page does not freeze UUID, ULID, text encoding, ordering characteristics, or public-ID presentation.
+
+The identifier type must remain compatible with referenced framework identifiers where a foreign-key relationship requires it.
+
+## Provider IDs
+
+Provider identifiers are mappings.
+
+They never replace Rule & Form identity.
+
+```text
+Rule & Form Lead
+      ↓
+Provider Mapping
+      ↓
+HighLevel object
+
+Rule & Form Site
+      ↓
+Provider Mapping / publishing configuration
+      ↓
+Framer project
+
+Rule & Form Appointment
+      ↓
+Provider Mapping
+      ↓
+provider calendar event
+```
+
+Application code should not require a provider ID to determine what a Rule & Form object is.
+
+Removing one provider mapping must not destroy the Rule & Form entity.
+
+## Integration Connections
+
+An **Integration Connection** represents Rule & Form's configured relationship with an external provider resource.
+
+It answers questions such as:
+
+- which provider is connected?
+- which Organization owns the connection?
+- which Business does it apply to when the scope is narrower than the Organization?
+- which external account, location, workspace, calendar, or resource is authorized?
+- what is the connection lifecycle state?
+- where are provider credentials or credential references associated?
+- what capabilities does the connection make possible?
+
+An Integration Connection is not the provider itself.
+
+It is Rule & Form's representation of a configured provider relationship.
+
+```text
+Organization
+  ↓
+Integration Connection
+  ↓
+Provider resource
+```
+
+Connections are Organization-owned.
+
+A connection may also be explicitly scoped to a Business where the provider relationship applies to one Business rather than the entire Organization.
+
+That scope must be represented rather than inferred from whichever mapped object happens to be found first.
+
+## Provider Mappings
+
+A **Provider Mapping** connects a Rule & Form object to the corresponding object in an external system.
+
+```text
+Rule & Form object
+      ↓
+Provider Mapping
+      ↓
+Integration Connection
+      ↓
+Provider object ID
+```
+
+A mapping must identify enough context to make the provider ID unambiguous.
+
+At minimum, provider identity is scoped by the relevant Integration Connection or an equivalent provider-resource boundary.
+
+The system must not assume an external object ID is globally unique across every account owned by that provider unless the provider explicitly guarantees it and the integration contract relies on that guarantee.
+
+Provider mappings support:
+
+- synchronization
+- webhook tenant resolution
+- command routing
+- reconciliation
+- inspection
+- migration between providers
+
+The exact physical mapping strategy is not frozen here.
+
+A single generic polymorphic mapping table is convenient but weakens normal foreign-key enforcement because one foreign key cannot safely reference many unrelated domain tables.
+
+The provider-integration specification must choose an implementation that preserves the ownership and identity invariants defined here.
+
+Convenience is not enough reason to discard referential integrity.
+
+## Webhook tenant resolution
+
+Provider events arrive without a Rule & Form customer session.
+
+The database model must permit the event to resolve through trusted integration state before tenant-owned processing occurs.
+
+```text
+Signed provider event
+        ↓
+provider resource / mapping
+        ↓
+Integration Connection
+        ↓
+Organization
+        ↓
+Business where applicable
+        ↓
+record event
+        ↓
+tenant-scoped processing
+```
+
+A provider object ID by itself is not tenant authority.
+
+A webhook handler must not search globally for a convenient customer record and then operate on whatever matches.
+
+Provider mapping resolves identity.
+
+Integration Connection resolves ownership.
+
+The application then processes the event inside explicit Organization scope.
+
+## Capability and provisioning state
+
+Capabilities are provisioned independently.
+
+Each capability ultimately resolves to one of the canonical product states:
+
+- **Live**
+- **Ready**
+- **Action needed**
+- **In progress**
+- **Connect when ready**
+- **Not enabled**
+
+These labels describe derived reality.
+
+They are not independent facts manually maintained by staff.
+
+```text
+Underlying configuration
+Integration state
+Provider mappings
+Completed provisioning work
+Customer requirements
+Failure state
+        ↓
+Capability resolver
+        ↓
+Capability State
+```
+
+The system may persist materialized capability state so that Business Hub, Internal Operations, Workbench, background processes, and reporting can read it efficiently.
+
+A persisted capability value remains a projection.
+
+It must be possible to recompute or reconcile that state from authoritative underlying records.
+
+Manual editing of a status label cannot substitute for changing the state that caused it.
+
+## Initial table families
+
+The physical schema will evolve, but the initial database is expected to contain families roughly corresponding to the following model.
+
+```text
+FRAMEWORK / IDENTITY
+
+user
+organization
+member
+session
+account
+verification / auth infrastructure
+
+
+RULE & FORM TENANCY
+
+businesses
+sites
+
+
+CANONICAL BUSINESS DATA
+
+business_records
+business_record_versions
+
+
+CONTENT
+
+content_states
+content_state_versions
+
+
+PUBLISHING
+
+published_snapshots
+publishing_runs
+publishing execution records
+
+
+OPERATIONAL DOMAIN
+
+customers
+leads
+jobs
+conversations
+messages / calls where modeled separately
+appointments
+
+
+INTEGRATIONS
+
+integration_connections
+provider mappings
+provider events
+provider commands
+
+
+PROVISIONING
+
+capability state / capability instances
+provisioning runs
+provisioning execution records
+
+
+CONTROL / HISTORY
+
+audit records
+overrides / locks where modeled separately
+system events
+```
+
+This is an architectural table map, not a migration file.
+
+Names that belong to later subsystem specifications may change before implementation.
+
+The entity boundaries should not.
+
+## Foreign-key rules
+
+Foreign keys should represent real ownership and lifecycle relationships.
+
+A foreign key exists to make invalid states harder to create, not merely to document that two tables happen to contain related IDs.
+
+For tenant-owned entities, foreign keys must preserve tenant consistency.
+
+Conceptually:
+
+```text
+Business
+(organization_id, business_id)
+
+Site
+(organization_id, business_id, site_id)
+
+Lead
+(organization_id, business_id, lead_id)
+```
+
+A Site belonging to Business B cannot be attached to Organization A.
+
+A Lead belonging to Business B cannot be attached to Organization A.
+
+A Published Snapshot cannot reference a Content State from another Site or tenant.
+
+An Appointment cannot reference a Customer owned by another Organization.
+
+Where the database can enforce these relationships directly through composite keys, scoped unique constraints, or another clear relational mechanism, it should.
+
+Application validation complements database integrity.
+
+It does not replace it.
+
+## Scoped uniqueness
+
+Uniqueness should match the domain boundary of the value.
+
+Not every identifier or name is globally unique.
+
+Examples of likely scoped uniqueness include:
+
+```text
+Membership
+unique(User, Organization)
+
+Business Record root
+unique(Business)
+
+Business Record revision
+unique(Business Record, version)
+
+Content State root
+unique(Site)
+
+Content State revision
+unique(Content State, version)
+
+provider object mapping
+unique(Integration Connection, provider object identity)
+```
+
+Other uniqueness constraints should be introduced when the domain requires them.
+
+A convenient global unique constraint must not be invented merely because it makes one query easier.
+
+Likewise, a value that must be unique inside a tenant should not be left globally unconstrained if duplicate state would make domain behavior ambiguous.
+
+## Query scoping and indexes
+
+Tenant-owned queries begin from Organization scope.
+
+The database should support the actual access pattern:
+
+```text
+WHERE organization_id = :authorizedOrganization
+```
+
+Business-scoped operations add Business identity inside that boundary.
+
+```text
+WHERE organization_id = :authorizedOrganization
+  AND business_id = :business
+```
+
+Common indexes for tenant-owned tables should reflect these access paths.
+
+An index design that makes global unscoped customer queries convenient while making tenant-scoped queries expensive is backwards.
+
+The detailed indexing strategy should follow measured query patterns as the application grows.
+
+The ownership column should already be present from the beginning.
+
+## Versioning is not one concept
+
+Several independent version systems exist in the architecture.
+
+They must not be conflated.
+
+```text
+Database migration version
+    shape of the application database
+
+Business Record schema version
+    shape / interpretation of canonical business data
+
+Business Record record version
+    revision of one Business's canonical facts
+
+Content State version
+    revision of approved/generated site content
+
+Template version
+    rendering / design implementation used
+
+Mapping version
+    transformation rules used to publish
+
+Published Snapshot
+    immutable binding of the relevant versions above
+```
+
+Increasing one version does not imply increasing all others.
+
+A database migration may introduce support for a future Business Record schema without changing any customer's Business Record.
+
+A Business Record may change without changing the template.
+
+A template may change without changing canonical business facts.
+
+A Published Snapshot records the combination that actually produced output.
+
+## Mutable roots and immutable history
+
+Several domains naturally contain a mutable current pointer and immutable historical records.
+
+Conceptually:
+
+```text
+Business Record
+    current_version_id → Version 14
+
+Business Record Versions
+    V1
+    V2
+    ...
+    V14
+
+
+Content State
+    current_version_id → Version 8
+
+Content State Versions
+    V1
+    ...
+    V8
+
+
+Site
+    current_published_snapshot_id → Snapshot 22
+
+Published Snapshots
+    Snapshot 1
+    ...
+    Snapshot 22
+```
+
+This pattern gives application code fast access to current state without sacrificing historical traceability.
+
+The exact implementation may vary where transaction safety or later requirements justify a different design.
+
+Current-state convenience must not make historical state mutable.
+
+## Timestamps
+
+Tenant-owned and operational records generally need reliable creation and modification timestamps.
+
+Historical or execution records may additionally need timestamps describing domain events, provider events, publication time, processing time, completion time, or failure time.
+
+These concepts should not be collapsed into one ambiguous timestamp.
+
+For example:
+
+```text
+created_at
+    when Rule & Form created this row
+
+provider_occurred_at
+    when the provider says an event happened
+
+received_at
+    when Rule & Form received the event
+
+processed_at
+    when Rule & Form successfully processed it
+```
+
+Detailed conventions belong in Naming, IDs & Conventions and the relevant execution specifications.
+
+The principle is already fixed:
+
+**timestamps should describe what actually happened, not merely when the database row happened to be updated.**
+
+## Deletion and lifecycle
+
+Deletion is a domain operation.
+
+It is not automatically the same thing as removing a database row.
+
+Important lifecycle operations include:
+
+```text
+Remove Membership
+Archive Business
+Disable Site
+Disconnect Integration
+Deactivate capability
+Close Organization
+Delete User identity
+Purge retained customer data
+```
+
+These actions have different effects.
+
+Removing a User or Membership must not silently destroy Business-owned data.
+
+Disconnecting HighLevel must not delete Rule & Form Customers, Leads, Jobs, Conversations, or Appointments merely because their provider mappings are no longer active.
+
+Removing a Framer target must not delete the Rule & Form Site or historical Published Snapshots.
+
+Closing an Organization must not automatically become an uncontrolled cascade across every customer-owned table.
+
+Core Rule & Form data should default toward explicit lifecycle handling rather than destructive cascade by convenience.
+
+Database cascades are appropriate when the child has no legitimate independent lifecycle and destruction is unquestionably part of deleting the parent.
+
+They should not be copied mechanically from framework examples into canonical business, operational, publishing, integration, or audit data.
+
+## Archival and purge
+
+Archival and deletion are distinct.
+
+Archival removes an entity from ordinary active operation while preserving required history and relationships.
+
+Purge permanently removes data according to an explicit retention, privacy, or offboarding process.
+
+```text
+Active
+  ↓
+Archived / closed
+  ↓
+retention period or explicit policy
+  ↓
+Purge where required
+```
+
+The exact retention periods and purge policy are not frozen on this page.
+
+The schema must not make those later policies impossible to implement.
+
+Immutable history does not mean data is exempt from legitimate legal or contractual deletion requirements.
+
+It means history is not casually overwritten during ordinary application operation.
+
+## Provider disconnection
+
+Provider lifecycle does not define Rule & Form lifecycle.
+
+When an Integration Connection is disconnected:
+
+```text
+Rule & Form domain records
+        remain
+
+Provider credentials
+        revoked / removed as required
+
+Provider mappings
+        retained, retired, or historical according to policy
+
+Provider commands
+        stop executing through that connection
+
+Capabilities
+        recompute from resulting reality
+```
+
+A connection can disappear while the Business, Customer, Lead, Job, Conversation, Appointment, Site, and Business Record remain valid Rule & Form objects.
+
+That independence is required for provider migration.
+
+## Schema migrations
+
+Database structure changes through version-controlled Drizzle migrations.
+
+The application and database may temporarily operate at adjacent deployment states during a release.
+
+Schema changes therefore follow the migration rules established in **Stack, Repo & Environments**.
+
+Destructive structural changes are not assumed to roll back with application code.
+
+Changes that affect existing data should use compatible migration sequences where required.
+
+Database history must remain reconstructable from the canonical repository.
+
+## Database access boundary
+
+Application code does not bypass the established data-access layer for convenience.
+
+Page components, webhook handlers, background jobs, internal tools, provider adapters, and workflow steps all use the same ownership rules.
+
+```text
+caller
+  ↓
+authorized / resolved tenant context
+  ↓
+domain operation
+  ↓
+tenant-scoped data access
+  ↓
+PostgreSQL
+```
+
+Background jobs carry Organization scope explicitly.
+
+Provider webhooks resolve Organization scope before tenant-owned processing.
+
+Internal Rule & Form operations enter an explicit tenant context.
+
+There is no privileged code path where tenant ownership stops mattering.
+
+## Row Level Security
+
+Database Row Level Security may provide defense in depth.
+
+It is not the primary Rule & Form tenant-isolation mechanism.
+
+Server processes, background work, internal operations, migrations, integrations, and privileged database connections may operate outside ordinary user-scoped RLS behavior.
+
+Explicit Organization scope therefore remains mandatory in application data access.
+
+```text
+application tenant scoping
+        required
+
+database constraints
+        required where applicable
+
+RLS
+        optional additional defense
+```
+
+No one layer is treated as permission to ignore the others.
+
+## Demo data
+
+Demo data follows the same domain model as customer data.
+
+The public demo uses a dedicated Organization and synthetic Business data.
+
+```text
+Demo Organization
+  ↓
+Demo Business
+  ↓
+Demo Site / Business Record / Leads / Jobs / etc.
+```
+
+Demo records carry normal tenant ownership.
+
+They are not globally accessible records with a special frontend label.
+
+Where external execution is required, the demo uses dedicated demo connections, targets, or controlled simulation.
+
+Provider mappings from the demo must never resolve to production customer resources.
+
+## What this page does not freeze
+
+This page does not yet decide:
+
+- the final Business Record field catalog
+- the final relational versus structured-payload split inside Business Record versions
+- exact Customer matching and deduplication rules
+- detailed Lead stages or pipeline semantics
+- detailed Job state
+- Conversation threading and message storage
+- Appointment state and recurrence behavior
+- final capability identifiers and resolver implementation
+- the final Provider Mapping table strategy
+- exact provider credential storage
+- exact Rule & Form ID format
+- final timestamp conventions
+- final retention periods
+- final archive and purge procedures
+- every index required by production query patterns
+- detailed audit-record structure
+- detailed publishing-run and provisioning-run schemas
+
+Those decisions belong to later Build Spec pages.
+
+They must preserve the ownership, identity, versioning, and tenant invariants established here.
+
+## Database invariants
+
+1. **Organization is the tenant boundary.**
+2. **Every tenant-owned Rule & Form record resolves to exactly one Organization.**
+3. **Business belongs to an Organization and is not a second tenant boundary.**
+4. **Business-owned rows cannot reference a Business from another Organization.**
+5. **Framework authentication identity is reused rather than duplicated into a second Rule & Form identity system.**
+6. **A framework authentication account is not a Rule & Form Organization.**
+7. **Business is a stable domain root, not a duplicate store of Business Record facts.**
+8. **A Business may own multiple Sites.**
+9. **The Business Record is the canonical source for business facts.**
+10. **Business Record history has durable revision identity and independent schema versioning.**
+11. **Content State is separate from canonical business facts.**
+12. **Publishable Content State has durable version identity.**
+13. **Published Snapshots are immutable and identify the state that produced an output.**
+14. **Rule & Form entities use Rule & Form IDs.**
+15. **Provider IDs remain mappings and never become domain identity.**
+16. **Provider mappings are scoped through trusted Integration Connections or equivalent provider-resource boundaries.**
+17. **Customers are not application Users.**
+18. **Leads, Jobs, Conversations, and Appointments remain Rule & Form entities even when providers execute part of their behavior.**
+19. **Capability status is derived from underlying reality.**
+20. **Persisted capability state is a recomputable projection, not independent manual truth.**
+21. **Tenant ownership is applied in the database query itself.**
+22. **Background jobs, webhooks, internal tools, and customer requests use the same tenant boundary.**
+23. **Foreign keys and scoped uniqueness should prevent invalid cross-tenant relationships where the database can enforce them.**
+24. **Historical records referenced by published or operational history are not casually mutated.**
+25. **Provider disconnection does not delete canonical Rule & Form objects.**
+26. **Removing identity or Membership does not silently delete Business-owned data.**
+27. **Destructive cascades require a domain reason. Convenience is not a domain reason.**
+28. **Schema migrations are version-controlled and deployment-compatible.**
+29. **Demo data obeys the same tenant rules as customer data.**
+30. **The schema protects Rule & Form's model even when external providers change.**
+
+The database should make the safe path the easy path.
+
+**Own the identity. Scope the tenant. Preserve the history. Map the providers.**

@@ -1,0 +1,36 @@
+---
+title: "Descriptions are important"
+---
+
+My arrow was confusing — it looked like I was renaming things. I wasn't. **The titles stay exactly as they are.** I was only proposing what goes in the description field.
+
+In Mintlify, every page has frontmatter at the top of the `.mdx` file:
+
+```text
+---
+title: "Why HighLevel Is Infrastructure"
+description: "The customer never sees it. That's the point."
+---
+```
+
+**Title** = sidebar label, page H1, and the link text in `llms.txt`. Yours are good. Leave them.
+
+**Description** = the line that shows under the H1, in search results, on sidebar hover, and after the colon in `llms.txt`. That's the field I want you to rewrite.
+
+Here's the same thing as a table so it's unambiguous:
+
+| Title (keep) | Description today | Description instead |
+| :-- | :-- | :-- |
+| Why HighLevel Is Infrastructure | The reasoning behind Rule & Form's use of HighLevel as foundational infrastructure rather than a product differentiator. | The customer never sees it. That's the point. |
+| What We Own vs. Rent | How Rule & Form distinguishes between the software it owns outright and the infrastructure it rents — and why that distinction matters. | The vendors are replaceable. The knowledge is not. |
+| Why Human Work Should Fall | How Rule & Form systematically reduces the human labor required to deliver and maintain each customer account over time. | Every account we deliver should make the next one cheaper. |
+| Accounts, Tenancy & Identity | _(none — architecture pages have no description)_ | Tenant boundaries, membership, and internal privileged access. Read before touching customer data. |
+| System Map | _(none)_ | How the whole system fits together — Business Record, content state, publishing, providers. Start here. |
+
+Two different registers, on purpose:
+
+**Narrative pages** get a claim. It's persuasion — a reviewer skimming the sidebar should get the argument without clicking.
+
+**Architecture pages** get a routing signal — what's inside, and when to open it. That's for Claude Code and for a reviewer's assistant deciding which of 28 spec pages answers their question.
+
+So the work is: write ~28 descriptions that don't exist, and rewrite the ~34 that do. Titles untouched.
