@@ -1,3 +1,880 @@
 ---
 title: "Failures, Retries & Fallbacks"
+description: "How Rule & Form classifies failures, decides what may retry, preserves known-good state, and degrades individual capabilities without turning partial failure into system-wide failure."
 ---
+
+Failure is expected.
+
+Providers time out. Credentials expire. Webhooks arrive twice or not at all. Publishing can partially mutate Framer before failing. A customer can leave setup incomplete. A worker can die after an external request succeeded but before Rule & Form received the response.
+
+The architecture must preserve what is known, isolate what is broken, and make the next action explicit.
+
+```text
+failure
+   ↓
+classify
+   ↓
+retry safely
+or
+reconcile
+or
+request action
+or
+use fallback
+or
+stop
+```
+
+**Do not turn every error into a retry. Do not turn every failure into an outage.**
+
+\<Callout icon="triangle-alert" color="#8B5CF6"\> **For implementation** - failure handling is based on what Rule & Form actually knows. Never claim success without verification, never retry an uncertain external mutation blindly, and never destroy a previously verified state because a newer attempt failed. \</Callout\>
+
+## The failure model
+
+Every meaningful failure should answer four questions:
+
+```text
+What failed?
+
+Is the desired operation still valid?
+
+Is repeating it safe?
+
+Who or what must act next?
+```
+
+Those answers determine the response.
+
+| Class | Meaning | Typical response |
+| :-- | :-- | :-- |
+| Transient | Operation remains valid and safe to repeat | Retry |
+| Rate limited | Provider asks Rule & Form to wait | Reschedule |
+| Permanent | Same inputs will continue to fail | Stop and surface cause |
+| Action required | Customer or Rule & Form must change state | Block until action |
+| Uncertain | External side effect may already have occurred | Reconcile before retry |
+| Degraded | Primary path unavailable but valid fallback exists | Use fallback |
+| Diverged | Provider actual state differs from expected state | Reconcile or review |
+
+These are operational classifications.
+
+They are not additional customer-facing Capability States.
+
+---
+
+## Retry only when repetition is safe
+
+Retries are appropriate when the previous attempt is known not to have produced an unsafe duplicate side effect.
+
+Examples:
+
+```text
+safe retry
+
+database connection failed before commit
+provider read timed out
+provider returned explicit temporary failure
+provider returned rate limit before execution
+internal worker failed before external mutation
+```
+
+Unsafe assumption:
+
+```text
+request failed
+    ↓
+therefore nothing happened
+```
+
+A failed response is not proof that the provider did nothing.
+
+### Backoff
+
+Transient retries use bounded backoff rather than immediate loops.
+
+Conceptually:
+
+```text
+attempt 1
+   ↓
+short wait
+
+attempt 2
+   ↓
+longer wait
+
+attempt 3
+   ↓
+longer wait
+```
+
+Provider-supplied retry timing takes precedence where available.
+
+The exact delay sequence is execution configuration, not business logic.
+
+---
+
+## Rate limits are scheduling signals
+
+Provider rate limits do not become arbitrary sleeps inside adapters.
+
+```text
+Provider Adapter
+      ↓
+rate limited
+retry information
+      ↓
+Workflow Engine
+      ↓
+schedule continuation
+```
+
+The adapter reports what happened.
+
+The orchestration layer owns when to try again.
+
+This keeps provider policy separate from execution timing.
+
+---
+
+## Uncertain is different from failed
+
+This is the most important distinction in outbound execution.
+
+```text
+Rule & Form
+    ↓
+send provider request
+    ↓
+provider performs action
+    ↓
+connection dies
+    ↓
+response never arrives
+```
+
+Rule & Form cannot truthfully classify that operation as either success or failure.
+
+The result is:
+
+```text
+uncertain
+```
+
+Examples include:
+
+```text
+SMS may have been sent
+Contact may have been created
+Appointment may have been created
+provider mutation may have completed
+```
+
+The next step is reconciliation.
+
+```text
+uncertain command
+      ↓
+inspect provider state
+      ↓
+confirm success
+or
+establish safe retry
+or
+require review
+```
+
+**We do not claim exactly once. We prevent uncertainty from becoming careless duplication.**
+
+---
+
+## Retries belong to the layer that owns the operation
+
+Different systems own different retry decisions.
+
+```text
+Workflow step
+    retries safe execution failures
+
+Provider Command
+    owns external mutation retry semantics
+
+Webhook processor
+    retries event processing
+
+Publishing Run
+    resumes publication steps
+
+Reconciliation
+    repairs stale or uncertain provider state
+```
+
+Do not create a global helper that automatically retries every thrown exception.
+
+The same network error can require different behavior depending on whether the operation was a safe read or a potentially completed mutation.
+
+---
+
+## Preserve known-good state
+
+A failed new attempt does not erase the previous verified result.
+
+### Publishing
+
+```text
+Published Snapshot 27
+    VERIFIED
+    CURRENT
+
+        ↓
+
+Publishing Run 28
+    FAILED
+
+        ↓
+
+Published Snapshot 27
+    still CURRENT
+```
+
+A failed publication does not move the Site backward into an unknown production state.
+
+The current pointer advances only after the new publication is verified.
+
+### Provider configuration
+
+The same principle applies elsewhere.
+
+If Booking was previously known to be Live and a reconciliation request temporarily fails:
+
+```text
+known provider state
+        +
+temporary inability to verify
+```
+
+is not automatically equivalent to:
+
+```text
+provider configuration destroyed
+```
+
+Runtime health may become unknown or degraded while the last known provisioning state remains separately represented.
+
+**Failed observation is not proof of failed reality.**
+
+---
+
+## Partial failure stays narrow
+
+One broken capability should not unnecessarily disable unrelated capabilities.
+
+Example:
+
+```text
+Website                 Live
+Lead form               Live
+Business phone          Live
+SMS                     In progress
+Booking                 Action needed
+Google Business Profile Connect when ready
+```
+
+If SMS authorization fails:
+
+```text
+Website
+    remains Live
+
+Lead form
+    remains Live
+
+Phone calls
+    continue where valid
+
+SMS
+    becomes blocked
+
+Business Hub
+    explains the affected path
+```
+
+Do not reduce the customer to:
+
+```text
+ACCOUNT ERROR
+```
+
+when five of six systems still work.
+
+**Failure should degrade at the smallest truthful boundary.**
+
+---
+
+## Fallbacks are product behavior
+
+A fallback is not the same thing as a retry.
+
+A retry attempts the same path later.
+
+A fallback uses another valid path now.
+
+### Booking unavailable
+
+```text
+Booking
+    unavailable
+        ↓
+website CTA
+        ↓
+Request Service
+or
+Call
+```
+
+The Site remains useful.
+
+### SMS unavailable
+
+```text
+SMS
+    unavailable
+        ↓
+lead still stored
+phone / email / Hub
+    continue where enabled
+```
+
+### Provider unavailable
+
+```text
+HighLevel unavailable
+        ↓
+website lead
+        ↓
+Rule & Form database
+        ↓
+Lead survives
+        ↓
+provider sync queued
+```
+
+The fallback must preserve canonical Rule & Form state.
+
+It must not bypass the system and create a second uncontrolled data path.
+
+---
+
+## Fallbacks must be explicit
+
+Do not invent fallback behavior inside error handlers.
+
+The product should know in advance what paths are allowed.
+
+Conceptually:
+
+```text
+Booking primary
+    online booking
+
+Booking unavailable
+    request service
+
+Request form unavailable
+    phone
+
+Phone unavailable
+    visible contact fallback
+```
+
+Not every capability needs a fallback.
+
+Some operations should fail closed.
+
+Examples:
+
+```text
+cannot verify tenant
+    stop
+
+invalid webhook signature
+    reject
+
+cannot identify provider connection
+    stop
+
+publishing mapping incompatible
+    stop
+
+authorization missing for sensitive mutation
+    stop
+```
+
+**Availability does not outrank correctness or security.**
+
+---
+
+## Customer action and system failure are different
+
+A customer who has not connected their calendar is not a system incident.
+
+```text
+Booking
+    Action needed
+
+Reason
+    Calendar authorization missing
+
+Next
+    Connect calendar
+```
+
+A provider outage is different:
+
+```text
+Booking
+    provisioning may remain Live
+
+Runtime health
+    Degraded
+
+Reason
+    Provider unavailable
+```
+
+And an internal configuration failure may be:
+
+```text
+Booking
+    In progress
+
+Responsible
+    Rule & Form
+```
+
+Failure handling should preserve responsibility.
+
+Do not tell the customer to fix problems that belong to Rule & Form or a provider.
+
+---
+
+## Authentication failures
+
+Expired or revoked provider authorization is explicit connection state.
+
+```text
+provider request
+      ↓
+authorization rejected
+      ↓
+Integration Connection
+    repair required
+      ↓
+affected capabilities recompute
+```
+
+If reconnecting requires customer authorization:
+
+```text
+Action needed
+```
+
+If Rule & Form can repair the connection without customer involvement:
+
+```text
+In progress
+```
+
+Do not endlessly retry invalid credentials.
+
+Authentication failure is not transient until evidence says otherwise.
+
+---
+
+## Validation failures
+
+Invalid desired state should fail before external mutation where possible.
+
+```text
+invalid Business Record projection
+invalid Publishing Mapping
+missing required locale content
+unsupported provider configuration
+invalid tenant relationship
+```
+
+Result:
+
+```text
+validation failure
+        ↓
+no provider mutation
+        ↓
+repair input
+        ↓
+new attempt
+```
+
+Retries do not fix deterministic invalid input.
+
+The owning validation rule should identify the field or invariant that must change.
+
+---
+
+## Provider divergence
+
+Provider state can differ from Rule & Form expected state.
+
+```text
+Rule & Form expected
+        ≠
+provider actual
+```
+
+Possible causes:
+
+```text
+manual provider edit
+missed event
+failed projection
+deleted provider resource
+provider-side behavior
+stale local state
+```
+
+Do not immediately overwrite unexplained divergence.
+
+V1 favors inspection when the correct action is ambiguous.
+
+```text
+divergence
+    ↓
+identify authority
+    ↓
+safe convergence
+or
+review
+```
+
+If Rule & Form owns the field, provider disagreement is drift.
+
+If the provider owns the operational fact, Rule & Form updates its projection.
+
+**Reconciliation follows authority. It does not use last-write-wins.**
+
+---
+
+## Publishing failures
+
+Framer publishing is explicitly non-transactional.
+
+A run may stop here:
+
+```text
+Preflight       Complete
+Assets          Complete
+CMS             Complete
+Localization    Failed
+Publish         Waiting
+Verification    Waiting
+```
+
+The recovery strategy is convergence.
+
+```text
+partial Framer state
+        ↓
+same frozen inputs
+        ↓
+resume failed / required steps
+        ↓
+desired provider state
+```
+
+Do not pretend earlier provider mutations rolled back.
+
+Do not generate a new Business Record Version merely because publishing failed.
+
+The original run is still trying to publish the same frozen state.
+
+---
+
+## Webhook processing failures
+
+Inbound provider events are persisted before asynchronous processing.
+
+```text
+webhook
+    ↓
+verify
+resolve tenant
+deduplicate
+persist Provider Event
+acknowledge
+    ↓
+process
+```
+
+If processing fails:
+
+```text
+Provider Event
+    still exists
+        ↓
+retry processor
+```
+
+The provider does not need to resend the webhook for Rule & Form to recover.
+
+Duplicate provider delivery remains harmless because event identity and deduplication happen before business processing.
+
+---
+
+## Worker failure
+
+Workers can die after claiming work.
+
+Lease or claim expiration makes safely recoverable work eligible again.
+
+```text
+worker claims
+    ↓
+worker dies
+    ↓
+lease expires
+    ↓
+recover
+```
+
+But lease expiry alone does not prove an external mutation did not happen.
+
+If the worker may have crossed the provider boundary:
+
+```text
+unknown outcome
+    ↓
+uncertain
+    ↓
+reconcile
+```
+
+This is why worker recovery and provider-command recovery cannot be the same generic retry rule.
+
+---
+
+## Retry exhaustion
+
+Retries are bounded.
+
+A command or step that continues failing should stop consuming execution indefinitely.
+
+```text
+retryable failure
+    ↓
+attempt
+    ↓
+attempt
+    ↓
+attempt
+    ↓
+retry budget exhausted
+```
+
+Then the system records a durable blocked or failed condition with enough context to act.
+
+Possible next actions:
+
+```text
+operator review
+provider reconciliation
+customer action
+connection repair
+manual retry after correction
+```
+
+Retry exhaustion does not delete the original intent.
+
+It changes what must happen next.
+
+---
+
+## Manual recovery
+
+Manual intervention is allowed.
+
+Invisible intervention is not.
+
+An operator may:
+
+```text
+repair configuration
+reconnect provider
+correct mapping
+retry command
+resume run
+reconcile provider
+quarantine resource
+choose approved fallback
+```
+
+The resulting state change must remain visible through Rule & Form records.
+
+Avoid:
+
+```text
+staff fixes provider manually
+        ↓
+marks task done
+        ↓
+no record of what actually changed
+```
+
+Prefer:
+
+```text
+staff repairs provider
+        ↓
+reconciliation / verification
+        ↓
+Rule & Form state recomputed
+```
+
+**Manual recovery is valid. Manual fiction is not.**
+
+---
+
+## Workbench
+
+Workbench should answer failure questions without requiring access to raw infrastructure logs.
+
+Example:
+
+```text
+PROVIDER COMMAND
+
+Send missed-call response
+
+STATUS
+Uncertain
+
+ATTEMPTS
+1
+
+LAST ATTEMPT
+4:16 PM
+
+CAUSE
+Connection closed after request transmission
+
+SAFE TO RETRY
+No
+
+NEXT
+Reconcile provider message history
+```
+
+Another:
+
+```text
+BOOKING
+
+CAPABILITY
+Action needed
+
+HEALTH
+Unknown
+
+CAUSE
+Calendar authorization revoked
+
+RESPONSIBLE
+Customer
+
+NEXT ACTION
+Reconnect calendar
+```
+
+And publishing:
+
+```text
+PUBLISHING RUN 28
+
+FAILED STEP
+Localization
+
+PREVIOUS LIVE SNAPSHOT
+27
+
+PRODUCTION IMPACT
+None
+
+NEXT
+Repair locale mapping and resume run
+```
+
+If the system knows why work stopped, the operator should not have to infer it.
+
+---
+
+## V1 boundary
+
+\<Tabs\> \<Tab title="Required"\> V1 requires a consistent failure policy across the real operating loop.
+
+```text
+- explicit transient / permanent / uncertain classification
+- bounded safe retries
+- provider Retry-After support
+- Provider Command uncertainty handling
+- reconciliation before unsafe mutation retry
+- preservation of last verified Published Snapshot
+- capability-level degradation
+- booking fallback
+- website-lead durability during HighLevel failure
+- explicit authentication-repair behavior
+- validation failures before provider mutation where possible
+- webhook-processing recovery
+- worker-lease recovery
+- retry exhaustion
+- provider divergence handling
+- manual recovery with recorded state
+- Workbench-visible reason and next action
+```
+
+\</Tab\>
+
+\<Tab title="Deferred"\> V1 does not require:
+
+```text
+- universal automatic remediation
+- generic distributed rollback
+- exactly-once delivery guarantees
+- automatic resolution of every provider divergence
+- infinite retry policies
+- sophisticated circuit-breaker infrastructure everywhere
+- multi-provider failover for every capability
+- automatic provider replacement during an outage
+- a generic rules engine for every possible fallback
+```
+
+\</Tab\> \</Tabs\>
+
+---
+
+## Acceptance conditions
+
+Failure handling is working when:
+
+- A safe transient failure retries without duplicating its logical operation.
+- A provider rate limit causes rescheduling rather than blocking a worker.
+- An uncertain external mutation is not blindly repeated.
+- An uncertain Provider Command can be reconciled to success or safe retry.
+- Retry exhaustion produces an inspectable blocked condition rather than an infinite loop.
+- A failed new publication leaves the last verified Published Snapshot current.
+- A partially failed Framer run can resume toward the same frozen desired state.
+- A HighLevel outage cannot destroy a valid website inquiry.
+- SMS failure does not take down an unrelated live Website capability.
+- Booking can fall back to a valid request or call path.
+- Missing customer authorization becomes Action needed rather than endless retry.
+- A Rule & Form-owned provider divergence cannot silently become canonical truth.
+- A persisted webhook event can be processed after the original HTTP request is gone.
+- Worker death does not permanently strand recoverable work.
+- Manual repair becomes observable Rule & Form state.
