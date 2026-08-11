@@ -2,3 +2,965 @@
 title: "Capability & Provisioning State"
 description: "How Rule & Form derives the readiness of each customer-facing capability from underlying business, configuration, provider, and execution state without reducing onboarding to one global status."
 ---
+
+## State is a result
+
+A capability state is not an editable field.
+
+Avoid:
+
+```text
+capability.status = "Live"
+```
+
+Prefer:
+
+```text
+Business facts
+Configuration
+Provider connection
+Provider mappings
+Completed work
+Required dependencies
+Verification evidence
+Known blockers
+        ↓
+Capability Resolver
+        ↓
+Live
+```
+
+Staff do not fix incorrect capability state by changing the label.
+
+They fix the state that caused the label.
+
+**Change reality. Recompute status.**
+
+### Materialized state
+
+Rule & Form may persist the resolved capability state so Business Hub, Workbench, Internal Operations, background processes, and reporting can read it efficiently.
+
+That persisted value remains a projection.
+
+```text
+authoritative state
+      ↓
+resolver
+      ↓
+Capability State projection
+```
+
+It must be possible to recompute and reconcile it.
+
+A stored status label never becomes an independent source of truth.
+
+---
+
+## Capability instances
+
+A capability exists in the context of a specific Organization and Business.
+
+Conceptually:
+
+```text
+Capability Instance
+
+organization_id
+business_id
+
+capability_key
+
+resolved_state
+primary_reason
+responsible_party
+next_action
+
+last_resolved_at
+last_verified_at
+
+health
+```
+
+The physical schema may differ.
+
+The important distinction is between:
+
+```text
+Capability Definition
+    what the product means by "booking"
+
+Capability Instance
+    booking for Johnson Plumbing
+```
+
+A capability key is stable Rule & Form identity.
+
+Examples:
+
+```text
+website
+lead_form
+business_phone
+sms
+missed_call_response
+booking
+google_business_profile
+payments
+```
+
+Do not make provider products the capability taxonomy.
+
+Avoid:
+
+```text
+highlevel_sms
+framer_site
+```
+
+Prefer:
+
+```text
+sms
+website
+```
+
+HighLevel and Framer are implementations behind those capabilities.
+
+---
+
+## How the resolver decides
+
+A capability resolver evaluates the current authoritative state against the capability's requirements.
+
+Conceptually:
+
+```text
+Should this capability be enabled?
+        ↓
+Are required dependencies satisfied?
+        ↓
+Is somebody currently responsible for a blocking step?
+        ↓
+Is configuration complete?
+        ↓
+Has activation occurred?
+        ↓
+Has the active result been verified?
+```
+
+The resolver returns a deterministic result.
+
+### Not enabled
+
+Use **Not enabled** when the capability is deliberately excluded.
+
+Examples:
+
+```text
+Payments
+    not part of current plan
+
+Call recording
+    disabled by policy
+
+Optional integration
+    customer explicitly declined it
+```
+
+There is no missing setup task.
+
+Nothing is waiting.
+
+### Connect when ready
+
+Use **Connect when ready** when a capability is supported and available, but intentionally optional.
+
+Example:
+
+```text
+Google Business Profile
+
+supported
+not required for launch
+not connected
+customer has not requested setup
+
+        ↓
+
+Connect when ready
+```
+
+This is different from **Action needed**.
+
+The customer is not blocking anything they currently expect to work.
+
+### Action needed
+
+Use **Action needed** when the next blocking action belongs to the customer.
+
+Examples:
+
+```text
+Authorize calendar
+
+Confirm forwarding number
+
+Provide required legal business information
+
+Reconnect revoked provider authorization
+```
+
+The status should identify one clear next action.
+
+Avoid:
+
+```text
+Action needed
+Something is wrong
+```
+
+Prefer:
+
+```text
+Action needed
+Connect your booking calendar
+```
+
+### In progress
+
+Use **In progress** when the next required action belongs to Rule & Form or an external provider being managed by Rule & Form.
+
+Examples:
+
+```text
+A2P registration submitted
+
+DNS verification underway
+
+Framer project being provisioned
+
+provider configuration being repaired
+```
+
+The customer does not need to intervene unless the underlying state changes.
+
+**Do not turn provider waiting time into customer work.**
+
+### Ready
+
+Use **Ready** when all required setup for the capability is complete, but it is not yet active in the customer experience.
+
+Example:
+
+```text
+Lead form
+
+validated
+destination configured
+submission path tested
+
+website not published yet
+
+        ↓
+
+Ready
+```
+
+Or:
+
+```text
+Booking
+
+calendar connected
+availability configured
+booking path valid
+booking UI not yet activated
+
+        ↓
+
+Ready
+```
+
+Ready means activation can occur without another setup dependency.
+
+### Live
+
+Use **Live** only when the capability is active and the required verification has succeeded.
+
+```text
+configured
++
+enabled
++
+active
++
+verified
+        ↓
+Live
+```
+
+Provider configuration alone is not enough.
+
+An API call succeeding is not enough where the capability has a meaningful external result that can be verified.
+
+---
+
+## Verification
+
+Each capability defines the evidence required before it becomes **Live**.
+
+Examples:
+
+| Capability | Example verification |
+| --- | --- |
+| Website | Production URL resolves and expected business identity appears |
+| Lead form | Submission creates the expected Rule & Form Lead |
+| Business phone | Assigned number and routing configuration are active |
+| SMS | Required messaging approval and send/receive path are available |
+| Booking | Required calendar configuration and booking path are usable |
+| Custom domain | Expected production hostname resolves to the intended Site |
+
+Verification rules belong to the capability definition, not individual UI components.
+
+```text
+provider says configured
+        ↓
+Rule & Form verifies required outcome
+        ↓
+Live
+```
+
+Where verification can become stale, the state retains enough evidence to know when it was last verified.
+
+Reconciliation can refresh that evidence.
+
+---
+
+## Readiness and runtime health are different
+
+Provisioning state and operational health should not be collapsed.
+
+A capability may be correctly provisioned but temporarily degraded because a provider is having an incident.
+
+```text
+Capability State
+    Live
+
+Runtime Health
+    Degraded
+```
+
+Health may resolve to a small internal model such as:
+
+```text
+healthy
+degraded
+failed
+unknown
+```
+
+The exact health model can evolve.
+
+The distinction should not.
+
+A temporary HighLevel outage does not mean the customer's SMS capability was never provisioned.
+
+Likewise, a successfully provisioned capability is not healthy merely because its configuration still exists.
+
+Business Hub can present this simply:
+
+```text
+SMS
+Live
+
+Issue detected
+Messages are delayed
+```
+
+Internal Operations and Workbench may expose the deeper evidence.
+
+---
+
+## Dependencies
+
+Capabilities can depend on underlying facts, configuration, or other capabilities.
+
+Those dependencies are explicit.
+
+```text
+SMS
+  ↓ requires
+business identity
+phone resource
+messaging registration
+provider connection
+approved consent path
+```
+
+```text
+Custom domain
+  ↓ requires
+Site
+domain configuration
+DNS state
+provider configuration
+verification
+```
+
+Do not create hidden dependencies inside frontend code.
+
+The capability definition should make the relationship discoverable.
+
+### Dependencies do not create global onboarding
+
+A blocked capability blocks only what actually depends on it.
+
+```text
+Website
+    Live
+
+Lead form
+    Live
+
+Business phone
+    Live
+
+SMS
+    In progress
+
+Booking
+    Action needed
+
+Google Business Profile
+    Connect when ready
+```
+
+This is a valid customer state.
+
+The website does not remain unpublished because A2P registration is still processing.
+
+Booking does not prevent lead capture.
+
+Google Business Profile does not prevent either.
+
+**Progressive provisioning means unfinished setup degrades narrowly.**
+
+---
+
+## The next blocker determines responsibility
+
+Several unresolved conditions may exist at once.
+
+The customer-facing state should reflect the **next blocking action**, not every unfinished task.
+
+Example:
+
+```text
+Booking
+
+calendar authorization missing
+appointment types not configured
+website booking component not activated
+```
+
+Nothing after authorization can proceed.
+
+The next blocker belongs to the customer.
+
+```text
+Booking
+    Action needed
+
+Next:
+Connect your calendar
+```
+
+After authorization:
+
+```text
+Rule & Form configures appointment types
+        ↓
+Booking
+    In progress
+```
+
+After configuration:
+
+```text
+Booking
+    Ready
+```
+
+After activation and verification:
+
+```text
+Booking
+    Live
+```
+
+This gives the customer one understandable state while preserving the deeper execution history internally.
+
+---
+
+## Provisioning work
+
+Provisioning is the work that changes underlying state until a capability reaches the intended result.
+
+```text
+desired capability
+      ↓
+requirements
+      ↓
+Provisioning Run
+      ↓
+tasks / provider commands / manual work
+      ↓
+authoritative state changes
+      ↓
+Capability Resolver
+      ↓
+new capability state
+```
+
+A **Provisioning Run** is execution history.
+
+A **Capability State** is the current resolved product condition.
+
+Do not collapse them.
+
+A capability can be **Live** after several historical provisioning runs.
+
+A failed provisioning attempt does not become the capability's permanent identity.
+
+### Provisioning tasks
+
+A provisioning task represents a concrete piece of required work.
+
+Conceptually:
+
+```text
+Task
+
+capability
+task type
+responsible party
+status
+dependency
+execution reference
+result
+failure
+evidence
+timestamps
+```
+
+Tasks may be:
+
+```text
+automatic
+provider-executed
+Rule & Form manual
+customer action
+verification
+```
+
+The exact task engine belongs to [Workflow & Orchestration Engine](/architecture/integrations-and-execution/workflow-and-orchestration-engine).
+
+This page owns what those results mean to the product.
+
+---
+
+## Manual provisioning is allowed
+
+Early customers will require some manual provider work.
+
+That is acceptable.
+
+Invisible manual state is not.
+
+```text
+Rule & Form staff
+    configures provider manually
+        ↓
+provider reality changes
+        ↓
+connection / mapping / task evidence updated
+        ↓
+resolver runs
+        ↓
+capability changes state
+```
+
+Do not create a special escape hatch where staff simply mark a capability complete.
+
+If manual work matters to readiness, the system records enough evidence to explain that it happened.
+
+This is especially important during the first customers because manual work is part of what Rule & Form needs to measure and progressively remove.
+
+---
+
+## Failures
+
+Failure does not introduce a seventh capability state.
+
+The resolver determines what must happen next.
+
+Examples:
+
+```text
+Provider authorization revoked
+
+customer must reconnect
+        ↓
+Action needed
+```
+
+```text
+Provider configuration failed
+
+Rule & Form can repair it
+        ↓
+In progress
+```
+
+```text
+Optional integration disconnected
+
+customer is not using it
+        ↓
+Connect when ready
+```
+
+A runtime provider outage may leave provisioning state **Live** while health becomes **Degraded**.
+
+The underlying failure remains explicit and inspectable.
+
+Do not hide:
+
+```text
+In progress
+```
+
+when the actual internal state is:
+
+```text
+three automatic attempts failed
+manual intervention required
+```
+
+Business Hub may remain simple.
+
+Workbench and Internal Operations must preserve the real failure.
+
+---
+
+## Capability changes can move backward
+
+Capability state is not a one-way onboarding checklist.
+
+Reality can change.
+
+```text
+Live
+  ↓ authorization expires
+Action needed
+```
+
+```text
+Live
+  ↓ customer disables capability
+Not enabled
+```
+
+```text
+Live
+  ↓ provider resource removed
+In progress
+```
+
+```text
+Ready
+  ↓ required configuration becomes invalid
+Action needed
+```
+
+The resolver reflects current reality.
+
+Historical transitions remain inspectable.
+
+### State history
+
+A material state change should produce enough history to answer:
+
+```text
+What changed?
+When?
+Why?
+What underlying record caused it?
+Who became responsible?
+What happened next?
+```
+
+A capability change may emit a System Event such as:
+
+```text
+capability.changed
+```
+
+The event records the transition.
+
+It does not become the current source of truth.
+
+---
+
+## Customer-facing presentation
+
+Business Hub should show the smallest useful representation.
+
+```text
+Website
+Live
+
+Lead form
+Live
+
+Business phone
+In progress
+We're setting up your number
+
+Booking
+Action needed
+Connect your calendar
+
+Google Business Profile
+Connect when ready
+```
+
+The contractor does not need:
+
+```text
+OAuth token state
+provider resource IDs
+workflow execution IDs
+A2P campaign identifiers
+Framer deployment state
+retry counters
+```
+
+Those belong in Workbench and Internal Operations.
+
+### No fake completion percentage
+
+Rule & Form does not need a global:
+
+```text
+Onboarding 73% complete
+```
+
+unless a future product requirement makes that measurement genuinely useful.
+
+Capabilities do not carry equal weight.
+
+One optional connection should not make a live customer look incomplete.
+
+The meaningful questions are:
+
+```text
+What works now?
+What does not?
+Who owns the next step?
+Does anything block the customer's current goal?
+```
+
+---
+
+## Workbench
+
+Workbench exposes why the resolver reached its answer.
+
+Example:
+
+```text
+SMS
+
+STATE
+In progress
+
+HEALTH
+Not active
+
+REASON
+A2P registration pending
+
+RESPONSIBLE
+Provider / Rule & Form
+
+NEXT ACTION
+Monitor registration
+
+DEPENDENCIES
+Business identity      satisfied
+Phone number           satisfied
+Consent language       satisfied
+A2P registration       pending
+
+CONNECTION
+HighLevel              healthy
+
+LAST RESOLVED
+...
+
+LAST VERIFIED
+not yet live
+```
+
+The objective is not to expose every internal implementation detail.
+
+It is to make the state explainable.
+
+**If Rule & Form says a capability is not live, we should be able to show exactly why.**
+
+---
+
+## Reconciliation
+
+Capability state depends on external systems, so event-driven updates are not sufficient by themselves.
+
+```text
+Rule & Form expected state
+        ↕
+provider reality
+        ↓
+reconciliation
+        ↓
+underlying state corrected
+        ↓
+resolver reruns
+```
+
+Examples:
+
+```text
+phone number deleted manually in HighLevel
+
+calendar disconnected outside Rule & Form
+
+custom domain removed
+
+provider authorization revoked
+```
+
+Reconciliation updates the authoritative provider projection or connection state.
+
+The capability resolver translates that change into product state.
+
+[Sync, Projections & Reconciliation](/architecture/integrations-and-execution/sync-projections-and-reconciliation) owns the shared reconciliation model.
+
+---
+
+## V1 boundary
+
+V1 proves progressive provisioning across the capabilities required for one real Plumbing customer. <Badge color="blue" size="sm" stroke>V1 scope</Badge>
+
+### Required
+
+```text
+Website
+Lead form
+Business phone
+SMS / missed-call response
+Booking
+Custom domain
+HighLevel connection
+```
+
+V1 also represents optional or deferred capabilities where they appear in the customer experience:
+
+```text
+Google Business Profile
+Payments
+```
+
+V1 requires:
+
+- stable capability keys
+- the six canonical customer-facing states
+- deterministic resolution from authoritative state
+- explicit dependency rules
+- responsible-party resolution
+- one clear next action for blocked capabilities
+- independent capability progression
+- persisted recomputable capability projection where useful
+- state transition history
+- verification before `Live`
+- separation of provisioning state from runtime health
+- manual provisioning that produces tracked state
+- customer-safe Business Hub presentation
+- deeper Workbench inspection
+- reconciliation-driven correction
+- demo data using the same resolver as production
+
+V1 does not require:
+
+- a general-purpose provisioning platform
+- arbitrary customer-created capabilities
+- a no-code dependency editor
+- one universal workflow for every provider
+- global onboarding percentage
+- perfect automatic remediation
+- every future integration
+- every future health signal
+- eliminating all manual provisioning before customer evidence justifies it
+
+---
+
+## Acceptance conditions
+
+Capability & Provisioning State is working when:
+
+- A Business can have Website **Live** while SMS remains **In progress**.
+- An optional unconnected integration can remain **Connect when ready** without blocking launch.
+- A deliberately excluded capability resolves to **Not enabled**.
+- A missing customer authorization resolves to **Action needed** with a specific next action.
+- The same capability changes to **In progress** when responsibility passes to Rule & Form.
+- A fully configured capability can become **Ready** before activation.
+- A capability cannot become **Live** until its required verification succeeds.
+- Product code cannot make a capability Live merely by writing a status label.
+- A persisted capability projection can be recomputed from authoritative state.
+- Manual provider work can change capability state without staff manually overriding the state itself.
+- A provider failure affects only the capabilities that depend on it.
+- Runtime degradation can be represented without pretending provisioning never completed.
+- A revoked connection can move a previously Live capability backward.
+- Business Hub can show the customer what works, what needs action, and what happens next without provider terminology.
+- Workbench can explain the underlying records that produced the visible state.
+- Reconciliation can detect external drift and cause the resolver to update the capability.
+- Demo and production use the same capability rules.
+
+---
+
+## Foundation rules
+
+1. **A customer does not have one global onboarding state.**
+2. **Capabilities provision independently.**
+3. **Every customer-facing capability resolves to Live, Ready, Action needed, In progress, Connect when ready, or Not enabled.**
+4. **Capability state is derived from authoritative underlying state.**
+5. **Staff and application code do not set customer-facing status labels as independent truth.**
+6. **The next blocking action determines who has the ball.**
+7. **Action needed means the customer must act.**
+8. **In progress means Rule & Form or a managed provider owns the next required step.**
+9. **Connect when ready is optional and non-blocking.**
+10. **Not enabled is intentional, not unfinished.**
+11. **Ready means setup is complete but activation has not yet occurred.**
+12. **Live requires activation and verification.**
+13. **Provisioning state and runtime health are separate concepts.**
+14. **A blocked capability does not block unrelated capabilities.**
+15. **Provisioning Runs change underlying state; they do not become capability state.**
+16. **Manual provisioning is allowed. Untracked manual readiness is not.**
+17. **Capability state can move backward when reality changes.**
+18. **Provider vocabulary stays behind the provider boundary.**
+19. **Persisted capability state remains a recomputable projection.**
+20. **Reconciliation corrects stale assumptions about provider reality.**
+21. **Business Hub shows the smallest useful customer view. Workbench preserves the explanation.**
+
+The customer should never have to decode the implementation to understand what is ready.
+
+**Show what works. Name what blocks it. Make the next step obvious.**
