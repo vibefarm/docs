@@ -1,3 +1,938 @@
 ---
-title: "HighLevel Integration"
+title: "HL Integration"
+description: "How Rule & Form uses HighLevel headlessly for communications, phone, booking, and selected automation without making HighLevel the product or source of truth."
 ---
+
+HighLevel is infrastructure behind Rule & Form.
+
+It gives V1 mature communications, telephony, booking, and automation without requiring Rule & Form to build those systems before proving the business.
+
+It does not define the Rule & Form domain.
+
+<Callout icon="terminal" color="#8B5CF6">
+  **For implementation** — contractors use Rule & Form, not HighLevel. Rule & Form owns domain identity, customer history, product state, and intended behavior. HighLevel resources are mapped execution infrastructure behind provider adapters. [Provider Adapters](/architecture/integrations-and-execution/provider-adapters) owns the shared boundary; this page owns HighLevel-specific behavior.
+</Callout>
+
+## Role and ownership
+
+```text
+CONTRACTOR
+
+Business Hub
+Website
+Setup
+
+      ↓
+
+RULE & FORM
+
+Customers
+Leads
+Conversations
+Messages
+Appointments
+Capabilities
+Commands
+Provider Mappings
+
+      ↓
+
+HighLevel Adapters
+
+      ↓
+
+HIGHLEVEL
+
+Contacts
+Opportunities
+Conversations / Transport
+LC Phone
+Calendars / Appointments
+Selected Workflows
+```
+
+The goal is not to build headless HighLevel. The goal is to use the parts of HighLevel required by the Rule & Form operating loop.
+
+**Availability inside HighLevel does not make a capability part of Rule & Form.**
+
+### Ownership matrix
+
+| Rule & Form concept | HighLevel resource | Authority |
+| --- | --- | --- |
+| Business | Sub-account / Location | Rule & Form |
+| Business Record | Custom Values where explicitly projected | Rule & Form |
+| Customer | Contact | Rule & Form |
+| Lead | Opportunity where required | Rule & Form |
+| Conversation | Conversation | Rule & Form |
+| Message content and history | Message | Rule & Form durable history |
+| Delivery / transport result | Message state | HighLevel while active provider |
+| Appointment | Calendar Event / Appointment | Rule & Form identity; HighLevel scheduling execution |
+| Phone configuration | LC Phone resources | Rule & Form intent; HighLevel execution |
+| Follow-up behavior | Workflow where used | Rule & Form intent; HighLevel execution |
+| Capability State | None | Rule & Form |
+
+The central rule is: **we are not synchronizing two CRMs.**
+
+Rule & Form owns the model. HighLevel receives the provider representations needed to execute specific capabilities.
+
+### Business to sub-account
+
+V1 uses one primary HighLevel sub-account for each Business connected to HighLevel. <Badge color="blue" size="sm" stroke>V1 scope</Badge>
+
+```text
+Organization
+    ↓
+Business
+    ↓
+Integration Connection
+    ↓
+HighLevel Sub-Account
+locationId
+```
+
+<Callout icon="lock" color="#E2E8F0">
+  `locationId` is provider identity. It never becomes `business_id` or `organization_id`.
+</Callout>
+
+Do not combine unrelated Businesses inside one HighLevel sub-account merely because they share an Organization.
+
+### Customer access
+
+The normal contractor experience contains no HighLevel login.
+
+```text
+Contractor
+    ↓
+Rule & Form Business Hub
+
+not
+
+Contractor
+    ↓
+white-labeled HighLevel
+```
+
+Rule & Form staff may use HighLevel directly as an operational fallback during the early customer phase. Manual provider changes must remain visible to reconciliation.
+
+HighLevel is an internal tool when necessary. It is not the customer product.
+
+---
+
+## Connection
+
+Production HighLevel access belongs to an Organization-owned Integration Connection.
+
+```text
+Integration Connection
+
+provider = highlevel
+organization_id
+business_id
+external_resource_id = locationId
+
+credential state
+installed scopes
+connection status
+last verified
+repair state
+```
+
+Credentials remain server-side. The browser never receives HighLevel access or refresh tokens.
+
+The Integration Connection owns credential lifecycle. The adapter receives usable credentials for one execution attempt.
+
+<Accordion title="Token lifecycle ownership">
+  Integration infrastructure owns authorization, durable token storage, token refresh, token rotation, expiry state, revoked authorization, and reconnection requirements.
+
+  The adapter reports authentication failure. It does not run an independent credential-repair loop.
+
+  Authentication failure becomes explicit connection state:
+
+  ```text
+  HighLevel connection
+        ↓
+  authentication failed
+        ↓
+  repair required
+        ↓
+  affected capabilities recompute
+  ```
+</Accordion>
+
+### Scopes
+
+Grant only the HighLevel scopes required by the product. V1 primarily needs access around:
+
+```text
+Contacts
+Conversations / Messages
+Opportunities
+Calendars / Appointments
+required Phone resources
+subscribed webhook events
+```
+
+**Do not request broad provider access merely because HighLevel exposes it.**
+
+### Business Record projection
+
+The Business Record does not synchronize wholesale into HighLevel.
+
+HighLevel receives only the canonical business facts required by provider configuration, workflows, calendars, or message templates.
+
+```text
+Business Record
+
+business name
+website
+selected contact facts
+selected scheduling facts
+selected operational values
+
+        ↓
+
+explicit provider mapping
+
+        ↓
+
+HighLevel Custom Values /
+provider configuration
+```
+
+HighLevel supports Custom Values through its API, and those values can be consumed by provider features such as workflows and calendars.
+
+**Do not create a mirrored Business Record inside HighLevel.** Project only the values provider execution actually requires.
+
+If HighLevel requires a business value in a workflow, that value is a projection of the [Business Record](/architecture/product-systems/business-record), not a second editable truth. A manual HighLevel edit to a Rule & Form-owned projected value is drift.
+
+---
+
+## Leads and customers
+
+### Website lead path
+
+Website inquiries enter Rule & Form first.
+
+```text
+Website form
+      ↓
+Rule & Form
+
+Customer
+Lead
+source / attribution
+
+      ↓
+Provider Command
+
+      ↓
+HighLevel Adapter
+
+      ↓
+Contact
+Opportunity where required
+```
+
+**A valid website inquiry must survive a HighLevel outage.** The Customer and Lead are recorded before provider synchronization is attempted.
+
+### Contacts
+
+A Rule & Form Customer may map to a HighLevel Contact.
+
+```text
+Customer
+    ↓
+Provider Mapping
+    ↓
+HighLevel Contact
+```
+
+Once a mapping exists, do not rediscover identity from phone number or email on every operation.
+
+HighLevel contact deduplication behavior does not define Rule & Form Customer identity. Rule & Form decides who the Customer is; the adapter decides how that Customer is represented in HighLevel.
+
+### Opportunities
+
+A Rule & Form Lead may map to a HighLevel Opportunity where provider workflows or internal fallback require one.
+
+```text
+Rule & Form Lead
+      ↓
+Provider Mapping
+      ↓
+HighLevel Opportunity
+```
+
+Do not build Rule & Form product logic around HighLevel pipeline IDs. A Lead remains valid without an Opportunity if that provider representation is not required.
+
+### Business Hub read path
+
+The Business Hub reads Rule & Form state. It is not a live HighLevel API viewer.
+
+| Business Hub | Rule & Form state | HighLevel role |
+| --- | --- | --- |
+| Home | Capabilities, activity, leads | Supplies some execution events |
+| Leads | Customer \+ Lead | Contact / Opportunity representation |
+| Inbox | Conversation \+ Messages | Transport |
+| Schedule | Appointment | Availability / booking execution |
+| Website | Site \+ Content State | None |
+| Setup | Capability State | Phone / calendar / connection reality |
+
+---
+
+## Communication
+
+### Conversation and message history
+
+Rule & Form stores the durable communication history required by the Business Hub.
+
+```text
+Message
+
+organization
+business
+conversation
+
+channel
+direction
+
+sender / recipient identity
+body
+
+occurred_at
+received_at
+
+provider mapping
+provider transport state
+```
+
+<Callout icon="lock" color="#E2E8F0">
+  Message content, direction, participants, and timestamps remain available if the active communications provider changes. HighLevel owns transport execution while it is the provider. Rule & Form owns the durable customer history.
+</Callout>
+
+```text
+Rule & Form Conversation
+      ↓
+Rule & Form Messages
+      ↓
+Provider Mapping
+      ↓
+HighLevel transport
+```
+
+Provider delivery IDs and transport status remain mapped provider state.
+
+Attachments that must remain part of durable history are copied into Rule & Form-controlled asset storage. **A temporary provider URL is not durable history.**
+
+### Inbound communication
+
+```text
+Incoming SMS / Call
+        ↓
+HighLevel
+        ↓
+webhook
+        ↓
+Provider Event
+        ↓
+Rule & Form Conversation / Message
+        ↓
+Business Hub Inbox
+```
+
+The Business Hub reads local Rule & Form state rather than requesting the entire conversation from HighLevel every time the screen loads.
+
+### Sending a reply
+
+```text
+Contractor writes reply
+        ↓
+Rule & Form Message / Command
+        ↓
+HighLevel Messaging Adapter
+        ↓
+provider transport
+        ↓
+delivery result
+        ↓
+Rule & Form transport state
+```
+
+The browser never sends directly through HighLevel.
+
+### Outbound phone identity
+
+A reply leaves from the same customer-facing Rule & Form-managed number associated with that conversation.
+
+```text
+Customer calls
+
+(325) 555-1000
+
+        ↓
+
+conversation associated
+with that number
+
+        ↓
+
+SMS reply
+
+from
+(325) 555-1000
+```
+
+**Do not arbitrarily switch customers between provider numbers.**
+
+Where several sending numbers exist, the conversation retains enough routing context to choose the intended outbound identity. HighLevel's send-message API supports an explicit `fromNumber`, so Rule & Form selects that identity rather than relying on a provider default.
+
+### V1 phone model
+
+The safest initial phone configuration is a dedicated local website tracking number.
+
+```text
+Website visitor
+      ↓
+website phone number
+      ↓
+HighLevel / LC Phone
+      ↓
+forwarding
+      ↓
+contractor's existing phone
+```
+
+The contractor keeps the phone system they already use. **Rule & Form does not require porting an established business number before launch.**
+
+Calls placed directly to the contractor's old number remain outside Rule & Form unless that number is later integrated deliberately.
+
+### Missed-call response
+
+Missed-call response is managed behavior, not a provider toggle.
+
+```text
+Missed call
+    ↓
+eligible for automatic response?
+    ↓
+YES
+    send response
+
+repeat call inside suppression window
+    ↓
+do not send duplicate response
+```
+
+Rule & Form owns the suppression and follow-up rule. HighLevel may execute it.
+
+### A2P is long-lead provisioning
+
+A phone number existing does not mean SMS is ready.
+
+U.S. local business messaging requires A2P registration covering business identity, campaign and use-case information, and consent evidence. HighLevel warns that registration can take weeks in some cases and that carrier propagation can continue after approval.
+
+**A2P therefore starts during onboarding, as soon as the required business information and compliant opt-in evidence exist.** Do not wait until Site publication.
+
+```text
+Structured Intake
+      ↓
+business identity available
+consent / messaging details available
+      ↓
+start A2P registration
+
+IN PARALLEL
+
+Website build
+Content
+Publishing
+Other provisioning
+```
+
+| Contractor provides | Rule & Form handles |
+| --- | --- |
+| Legal business identity | Submission |
+| Required registration details | Configuration |
+| Authorized representative information | Monitoring |
+| Messaging use-case details where needed | Correction and resubmission |
+|  | Status communication |
+
+Consent evidence is a dependency between two Rule & Form systems, not a contractor task. Generated website forms must carry the opt-in language that A2P registration requires, and that language is part of the form specification rather than per-customer copy. The [Website System](/architecture/product-systems/website-engine) owns the form; this page owns the requirement that it exist.
+
+Until messaging is genuinely ready:
+
+```text
+Website
+    LIVE
+
+Phone
+    READY / LIVE where voice works
+
+SMS
+    IN PROGRESS
+or
+    ACTION NEEDED
+```
+
+**Site launch is not held hostage by carrier approval.** A valid fallback remains available.
+
+<Accordion title="Call recording is not enabled by default">
+  Provider support for call recording does not mean Rule & Form enables it.
+
+  Recording, consent, retention, access, and disclosure require an explicit policy before production use. That policy belongs to a later security and operating pass.
+</Accordion>
+
+---
+
+## Booking and automation
+
+### Booking
+
+HighLevel is the initial scheduling provider.
+
+```text
+Website
+    ↓
+Rule & Form booking endpoint
+    ↓
+Calendar Adapter
+    ↓
+provider availability
+    ↓
+visitor chooses time
+    ↓
+Rule & Form Appointment
+    ↓
+Provider Command
+    ↓
+HighLevel Appointment
+```
+
+Rule & Form owns Appointment identity. HighLevel executes availability and booking while it is the active Calendar Provider. Provider-originated changes update the mapped Appointment through verified events.
+
+Booking does not block Site launch.
+
+```text
+Website
+    LIVE
+
+Booking
+    ACTION NEEDED
+```
+
+If booking is unavailable, the Site uses a valid fallback such as calling or submitting a request. Calendar authorization, appointment types, working hours, buffers, and other requirements become explicit setup tasks.
+
+A specialist provider such as Nylas is a possible future replacement direction, not a committed migration.
+
+### Automation ownership
+
+Rule & Form owns intended behavior. The contractor sees product concepts, not a workflow builder.
+
+```text
+New lead response        ON
+Missed-call response     ON
+Estimate follow-up       ON
+Appointment reminders    ON
+Past-customer follow-up  OFF
+```
+
+<Accordion title="Why HighLevel workflows are managed configuration, not a product surface">
+  HighLevel's public Workflows API exposes retrieval rather than a general workflow CRUD surface. Arbitrary native workflows cannot be created and rewritten programmatically.
+
+  V1 therefore treats selected workflows as managed provider configuration maintained by Rule & Form, not as customer-editable product behavior. The semantic rule stays in Rule & Form — _missed-call response is enabled_ — rather than _HighLevel Workflow X is the product_.
+</Accordion>
+
+### HighLevel Snapshots
+
+A maintained source sub-account may contain reusable HighLevel configuration.
+
+```text
+Rule & Form Plumbing Core
+
+Pipeline
+Custom Fields
+Custom Values
+Calendars
+Message templates
+Selected workflows
+Tags / provider configuration
+```
+
+HighLevel Snapshots copy reusable provider configuration including workflows, calendars, custom fields, custom values, and pipelines.
+
+Always qualify the term.
+
+```text
+HighLevel Snapshot
+    reusable provider configuration
+
+Published Snapshot
+    immutable Rule & Form publishing provenance
+```
+
+They are unrelated concepts. [Naming, IDs & Conventions](/architecture/foundation/naming-ids-and-conventions) is the enforcement point.
+
+### Manual provisioning is allowed
+
+```text
+create sub-account manually
+        ↓
+apply HighLevel Snapshot
+        ↓
+authorize connection
+        ↓
+record Integration Connection
+        ↓
+project required Business Record values
+        ↓
+verify
+```
+
+**Manual early provisioning is not an architectural exception. Untracked manual state is.**
+
+Every manual provider step that affects readiness must eventually resolve into explicit Rule & Form state.
+
+---
+
+## Execution and drift
+
+### Commands
+
+All Rule & Form initiated HighLevel mutations use the durable command path.
+
+```text
+Rule & Form action
+      ↓
+domain transaction
+      ↓
+Provider Command
+      ↓
+workflow execution
+      ↓
+HighLevel Adapter
+      ↓
+HighLevel
+```
+
+Provider failure does not erase the original Rule & Form action.
+
+### Webhooks
+
+HighLevel webhooks are the fast path for provider-originated change.
+
+```text
+HighLevel
+    ↓
+signed webhook
+    ↓
+verify
+    ↓
+resolve locationId
+    ↓
+Integration Connection
+    ↓
+Organization + Business
+    ↓
+record Provider Event
+    ↓
+acknowledge
+    ↓
+async processing
+```
+
+New Rule & Form webhook code verifies the current `X-GHL-Signature` Ed25519 signature against the raw request body before parsing JSON. Do not build new integration logic around the legacy RSA `X-WH-Signature` path, which HighLevel identifies as transition support.
+
+<Callout icon="lock" color="#E2E8F0">
+  A valid signature proves provider origin. It does not prove tenant identity. `locationId` must still resolve through an Integration Connection before tenant-owned processing.
+</Callout>
+
+Webhook handling is intentionally short.
+
+```text
+verify
+resolve connection
+deduplicate
+persist raw event
+acknowledge
+
+        ↓
+
+background processing
+```
+
+Duplicate delivery must be harmless. HighLevel recommends fast acknowledgement and idempotent processing.
+
+<Card title="Webhooks, Events & Command Queue" icon="inbox" horizontal href="/architecture/integrations-and-execution/webhooks-events-and-command-queue">
+  The durable inbound-event path and command queue.
+</Card>
+
+### Local projections
+
+HighLevel is not the Business Hub database.
+
+```text
+HighLevel
+   ↓ webhooks / reads
+
+Provider Events
+Provider Mappings
+transport state
+
+        ↓
+
+Rule & Form
+domain + projections
+
+        ↓
+
+Business Hub
+```
+
+This gives Rule & Form tenant-scoped reads, joins with canonical data, durable conversation history, auditability, resilience to provider latency, reconciliation, and provider replacement.
+
+### One writer per field
+
+Synchronization is not last-write-wins.
+
+```text
+Lead stage
+    Rule & Form authoritative
+
+HighLevel Opportunity stage
+    provider projection
+
+
+Message body / history
+    Rule & Form durable state
+
+Message delivery result
+    HighLevel while active provider
+
+
+Business phone intent
+    Rule & Form
+
+provider routing reality
+    HighLevel
+```
+
+A disagreement with a Rule & Form-owned value is drift. **It is not permission for HighLevel to silently become authoritative.**
+
+### Reconciliation
+
+Webhooks provide freshness. Reconciliation provides correctness.
+
+```text
+Rule & Form expected state
+          ↕
+    HighLevel Adapter
+          ↕
+HighLevel actual state
+          ↓
+      reconcile
+```
+
+V1 reconciliation is narrow. It verifies the provider resources required by the operating loop:
+
+- connection still works
+- required mappings still exist
+- recent message state can be reconciled
+- Appointment mappings agree
+- phone resources remain available
+- required provider configuration remains present
+
+Perfect synchronization of an entire HighLevel sub-account is deferred.
+
+<Card title="Sync, Projections & Reconciliation" icon="refresh-cw" horizontal href="/architecture/integrations-and-execution/sync-projections-and-reconciliation">
+  The common reconciliation model.
+</Card>
+
+### Rate limits and failure behavior
+
+The adapter detects provider rate limits and returns retry information. Durable workflow infrastructure owns waiting and rescheduling.
+
+**Do not sleep inside the adapter. Do not hard-code current provider quotas into domain logic.**
+
+A HighLevel failure degrades the affected capability. It does not corrupt unrelated Rule & Form state.
+
+```text
+HighLevel unavailable
+
+Website
+    remains live
+
+Lead form
+    stores Lead
+
+SMS
+    pending / retrying
+
+Booking
+    fallback
+
+Business Hub
+    known local state
+
+Capability
+    reflects problem
+```
+
+---
+
+## Provider replacement
+
+HighLevel currently sits behind several replaceable boundaries.
+
+```text
+Messaging
+
+HighLevel
+    ↓
+Twilio / Telnyx direction
+
+
+Calendar
+
+HighLevel
+    ↓
+specialist provider direction
+
+
+Automation
+
+HighLevel workflows
+    ↓
+Rule & Form / Inngest where ownership moves
+```
+
+These are architectural directions, not migration promises. Replacement may require substantial engineering and provider migration.
+
+It must not require redefining Business, Customer, Lead, Conversation, Message, Appointment, or Capability.
+
+Because Rule & Form stores durable conversation history locally, replacing the transport provider does not imply throwing away historical customer conversations.
+
+---
+
+## V1 boundary
+
+<Tabs>
+  <Tab title="Required">
+    V1 proves one complete HighLevel-backed operating loop.
+
+    - Business → HighLevel sub-account mapping
+    - Organization-owned Integration Connection
+    - Scoped production authorization
+    - Durable credential storage
+    - Webhook signature verification
+    - Provider-event persistence and deduplication
+    - Durable outbound commands
+    - Customer → Contact mapping
+    - Lead → Opportunity mapping where required
+    - Website lead survives provider failure
+    - Local Conversation and Message history
+    - SMS projection into Business Hub
+    - Reply from Business Hub
+    - Explicit outbound sending-number selection
+    - Website tracking number and forwarding
+    - Missed-call activity
+    - Duplicate-suppressed missed-call response
+    - Early A2P provisioning state
+    - Basic call and voicemail history where available
+    - Calendar availability
+    - Appointment creation and mapping
+    - Selected standardized HighLevel workflows
+    - Required Business Record → provider-value projection
+    - Basic reconciliation
+    - Progressive provisioning
+    - Simulated adapter outside permitted production execution
+  </Tab>
+  <Tab title="Deferred">
+    V1 does not require:
+
+    - Customer HighLevel logins
+    - Every HighLevel messaging channel
+    - Complex email inbox
+    - WhatsApp
+    - Instagram / Facebook messaging
+    - Arbitrary workflow editing
+    - Customer workflow builder
+    - Mandatory phone-number porting
+    - Hosted SMS as default
+    - Advanced call-center behavior
+    - Call recording by default
+    - Voice AI
+    - HighLevel payments
+    - HighLevel reviews as a core integration
+    - Complete bidirectional CRM synchronization
+    - Perfect reconciliation
+    - Automated sub-account creation
+    - Complex multi-user scheduling
+    - Wholesale Business Record mirroring into HighLevel
+    - Rebuilding provider capabilities before customer evidence requires it
+  </Tab>
+</Tabs>
+
+---
+
+## Acceptance conditions
+
+The integration is working when:
+
+- A website submission creates a Rule & Form Lead before HighLevel synchronization.
+- That Lead can map to provider Contact and Opportunity records without adopting their IDs.
+- Message bodies remain available from Rule & Form storage.
+- An inbound SMS appears in Business Hub through webhook processing.
+- A Business Hub reply sends from the intended customer-facing number.
+- A missed website call triggers one controlled response without duplicate spam.
+- A2P can remain In progress without blocking Site launch.
+- Real calendar availability produces a mapped Rule & Form Appointment.
+- A failed provider command retries without duplicating the side effect.
+- Duplicate webhooks create no duplicate Rule & Form activity.
+- An invalid signature touches no tenant data.
+- A `locationId` resolves to exactly one Integration Connection before processing.
+- Expired authorization becomes connection-repair state.
+- HighLevel can be unavailable without losing a website inquiry.
+- A Business Record value used by HighLevel remains Rule & Form-authoritative.
+- Demo and preview execution cannot reach a production customer sub-account.
+- Reconciliation detects provider drift.
+
+---
+
+## Foundation rules
+
+1. **HighLevel is a provider, not the Rule & Form product.**
+2. **Contractors use Rule & Form and do not require HighLevel UI access.**
+3. **One V1 Business maps to one primary HighLevel sub-account when HighLevel is enabled.**
+4. **`locationId` is provider identity, never tenant or Business identity.**
+5. **Rule & Form owns Customers, Leads, Conversations, Messages, Appointments, capability state, and automation intent.**
+6. **Message content and customer conversation history are durable Rule & Form state; HighLevel owns transport execution while active.**
+7. **Website Leads are recorded before HighLevel synchronization.**
+8. **The Business Record is never mirrored wholesale; only required provider values are projected explicitly.**
+9. **Credentials belong to the Integration Connection and remain server-side.**
+10. **A2P is long-lead provisioning and begins as soon as required customer information exists.**
+11. **Generated website forms carry the opt-in language that messaging registration requires.**
+12. **Inbound webhooks are verified, tenant-resolved, deduplicated, and recorded before business processing.**
+13. **Outbound mutations travel through durable Rule & Form commands.**
+14. **HighLevel workflows implement selected behavior; they do not define Rule & Form automation semantics.**
+15. **A HighLevel Snapshot is not a Rule & Form Published Snapshot.**
+16. **Webhooks provide freshness; reconciliation repairs drift.**
+17. **Provider failure degrades the affected capability without destroying canonical state.**
+18. **Replacing HighLevel may require migration work but does not redefine the Rule & Form domain or erase durable conversation history.**
+
+HighLevel earns its place by letting Rule & Form ship the operating loop now without making HighLevel the architecture.
+
+**Rent the plumbing. Own the system.**
+
+---
+
+## Next
+
+<Columns cols={2}>
+  <Card title="Framer Publishing" icon="upload" href="/architecture/integrations-and-execution/framer-publishing">
+    The other provider boundary in the V1 loop.
+  </Card>
+
+  <Card title="Workflow & Orchestration Engine" icon="workflow" href="/architecture/integrations-and-execution/workflow-and-orchestration-engine">
+    Durable execution behind every provider command.
+  </Card>
+</Columns>

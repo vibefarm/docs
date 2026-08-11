@@ -1,3 +1,592 @@
 ---
 title: "Provider Adapters"
+description: "How Rule & Form isolates provider APIs, credentials, failures, identity, and execution behind controlled interfaces."
 ---
+
+Provider adapters keep Rule & Form independent from the systems it uses to execute work.
+
+HighLevel, Framer, and future providers expose different objects, terminology, APIs, credentials, limits, and failure modes. Rule & Form translates those differences at the boundary instead of allowing them into the domain.
+
+<Callout icon="terminal" color="#8B5CF6">
+  **For implementation** — product logic speaks in Rule & Form concepts. Provider IDs, payloads, authentication, terminology, and API behavior stay behind provider adapters and integration infrastructure. This page owns the shared boundary; provider pages own provider-specific behavior.
+</Callout>
+
+## The boundary
+
+```text
+Rule & Form domain
+
+Lead
+Conversation
+Appointment
+Site
+Capability
+
+        ↓
+
+Provider Adapter
+
+        ↓
+
+External provider
+
+HighLevel
+Framer
+future providers
+```
+
+The adapter is translation and execution infrastructure.
+
+**It is not the source of truth for the Rule & Form object.**
+
+### Three integration concepts
+
+Do not collapse these into one generic integration.
+
+```text
+Integration Connection
+    configured relationship with provider infrastructure
+
+Provider Mapping
+    Rule & Form object ↔ provider object identity
+
+Provider Adapter
+    code that reads, writes, and translates provider behavior
+```
+
+In practice they chain:
+
+```text
+Rule & Form Lead
+        ↓
+Provider Mapping
+        ↓
+HighLevel object
+
+command executes through
+
+HighLevel Adapter
+        ↓
+Integration Connection
+        ↓
+HighLevel API
+```
+
+The Connection owns configured access. The Mapping owns identity correspondence. The Adapter owns provider-specific execution and translation.
+
+---
+
+## The contract
+
+### Adapter responsibilities
+
+| An adapter may own | An adapter does not own |
+| --- | --- |
+| Provider API calls | Tenant authorization |
+| Provider client setup | Business Record truth |
+| Request serialization | Product permissions |
+| Response parsing | Workflow policy |
+| Provider-specific pagination | Lead-stage policy |
+| Rate-limit detection | Customer deduplication policy |
+| Normalization of provider errors | Capability product labels |
+| Translation between canonical and provider fields | Long-lived retries |
+| Provider object creation, mutation, and lookup | Credential refresh scheduling |
+| Provider webhook parsing and verification support | User-facing provider terminology |
+| Reconciliation reads | Whether Rule & Form should perform an action |
+
+Capability discovery belongs to the adapter where the provider exposes it — asking a connected account which features, calendars, or numbers are actually available. What the product does with that answer is [Capability & Provisioning State](/architecture/product-systems/capability-and-provisioning-state).
+
+**Adapters execute intent. They do not decide intent.**
+
+The HighLevel adapter may send an estimate follow-up message. It does not decide whether that follow-up should happen.
+
+### Canonical in, canonical out
+
+Domain code does not construct provider payloads directly.
+
+```text
+Rule & Form command
+
+Send Message
+  connection
+  conversation
+  recipient
+  body
+
+        ↓
+
+HighLevel Adapter
+
+        ↓
+
+HighLevel request
+```
+
+Provider responses are normalized before they become inputs to Rule & Form logic.
+
+```text
+provider response
+        ↓
+Adapter
+        ↓
+canonical result
+```
+
+Raw provider payloads may be retained for evidence, diagnostics, or reconciliation. They do not become the canonical domain model.
+
+### Capability-specific interfaces
+
+Do not create one giant universal provider interface. Different providers expose different capabilities.
+
+```typescript
+interface MessagingProvider {
+  sendMessage(input: SendMessageInput): Promise<SendMessageResult>;
+}
+
+interface AppointmentProvider {
+  createAppointment(
+    input: CreateAppointmentInput
+  ): Promise<CreateAppointmentResult>;
+
+  cancelAppointment(
+    input: CancelAppointmentInput
+  ): Promise<void>;
+}
+
+interface SitePublisher {
+  publishSite(
+    input: PublishSiteInput
+  ): Promise<PublishSiteResult>;
+}
+```
+
+HighLevel may implement messaging and appointments. Framer may implement publishing. Future providers implement only the contracts they actually support.
+
+**Do not force unrelated providers into fake common methods merely to make their interfaces match.**
+
+### Inputs and outputs
+
+Adapter inputs contain the provider-independent information required to perform the operation, plus explicit integration context.
+
+```text
+domain command
+      ↓
+Organization context
+Integration Connection
+Rule & Form object identity
+operation data
+idempotency identity
+      ↓
+adapter
+```
+
+The adapter may resolve provider mappings required to execute the operation.
+
+<Callout icon="lock" color="#E2E8F0">
+  An adapter must not infer tenant authority from a provider object ID. A provider ID by itself never establishes tenant ownership.
+</Callout>
+
+Adapter outputs return normalized information the caller can use without understanding the provider payload.
+
+```text
+Create Appointment Result
+
+provider object ID
+normalized status
+provider occurred time
+normalized result data
+```
+
+### Credentials and token lifecycle
+
+Provider credentials belong to the Integration Connection, not to the adapter.
+
+```text
+Integration Connection
+      ↓
+credential reference / token state
+      ↓
+usable provider credentials
+      ↓
+Provider Adapter
+```
+
+Integration infrastructure owns credential acquisition, secure storage or credential references, OAuth refresh, token expiry state, reconnection requirements, and connection repair state.
+
+The adapter receives usable credentials for one execution attempt. If authentication fails, it reports the failure. It does not start an independent long-lived token-repair loop.
+
+Credential handling preserves the tenant boundary of the Integration Connection.
+
+**Environment secrets and per-customer provider credentials are different classes of secret.** [Stack, Repo & Environments](/architecture/foundation/stack-repo-and-environments) owns the first. Integration infrastructure owns the second.
+
+### Simulated adapters
+
+Every provider contract used by product code has a simulated implementation.
+
+```text
+same domain command
+        ↓
+
+production connection
+    → real provider adapter
+
+local / preview / demo
+    → simulated adapter
+```
+
+Simulated adapters serve local development, preview environments, automated tests where real execution is unnecessary, and the public demo.
+
+Execution mode is selected through environment and Integration Connection configuration. Product code does not branch on it:
+
+```text
+if demo
+    fake result
+else
+    call HighLevel
+```
+
+The same product path depends on the adapter contract. That is how simulation stays a boundary mechanism rather than a parallel product.
+
+A simulated adapter implements the same contract, returns the same normalized result and error shapes, and is verified against the same contract tests as the real implementation. It simulates provider behavior including failure classes, not only successful responses.
+
+<Callout icon="lock" color="#E2E8F0">
+  Local, preview, and demo environments do not perform real external execution against customer provider resources. This page is the authority for that rule; other pages defer to it.
+</Callout>
+
+---
+
+## Execution
+
+### Commands
+
+Provider mutations originate from explicit Rule & Form commands.
+
+```text
+domain intent
+    ↓
+command
+    ↓
+workflow / orchestration
+    ↓
+provider adapter
+    ↓
+provider side effect
+```
+
+The adapter executes the command. It does not create the product intent behind it.
+
+### Idempotency
+
+Every externally visible side effect that may be retried carries stable idempotency identity.
+
+```text
+logical action
+    ↓
+idempotency key
+    ↓
+attempt 1
+attempt 2
+attempt 3
+
+same action
+same key
+```
+
+If the provider supports native idempotency keys, use them where appropriate. If it does not, Rule & Form still prevents duplicate logical side effects through command state, provider mappings, reconciliation, or equivalent durable controls.
+
+**Retry attempt number must never become the idempotency identity.** [Naming, IDs & Conventions](/architecture/foundation/naming-ids-and-conventions) owns key derivation rules.
+
+### Rate limits
+
+The adapter detects provider rate limiting and reports the normalized failure plus any provider signal needed for scheduling, such as a retry-after value.
+
+```text
+provider response
+    ↓
+rate limit detected
+    ↓
+normalized rate-limit result
+    ↓
+workflow reschedules
+```
+
+The adapter does not sleep, wait, or independently schedule a later retry.
+
+Rate limits may apply across multiple concurrent operations sharing one Integration Connection. Workflow and integration infrastructure must therefore coordinate around connection-level provider constraints rather than treating each adapter call as an isolated process.
+
+### Errors
+
+Provider-specific failures are normalized into a small Rule & Form error taxonomy.
+
+| Class | Meaning |
+| --- | --- |
+| `temporary failure` | Retry may succeed |
+| `rate limited` | Retry later |
+| `authentication failure` | Connection needs repair |
+| `invalid request` | Rule & Form input or mapping problem |
+| `provider rejection` | Provider refused the requested action |
+| `not found` | Provider mapping may be stale |
+| `conflict / duplicate` | Reconcile before retry |
+| `unknown provider failure` | Inspect and classify |
+
+Preserve the provider's original error detail for diagnostics.
+
+**Product code should not need to recognize provider-specific error strings.**
+
+### Retries
+
+Adapters perform one execution attempt. Durable workflows own retry behavior.
+
+```text
+Provider Adapter
+    one attempt
+
+Workflow / Orchestration
+    retries
+    backoff
+    scheduling
+    timeout
+    recovery
+```
+
+This keeps retry history visible, durable, and auditable.
+
+<Columns cols={2}>
+  <Card title="Failures, Retries & Fallbacks" icon="rotate-ccw" href="/architecture/control/failures-retries-and-fallbacks">
+    Retry policy and fallback behavior.
+  </Card>
+
+  <Card title="Workflow & Orchestration Engine" icon="workflow" href="/architecture/integrations-and-execution/workflow-and-orchestration-engine">
+    Durable execution.
+  </Card>
+</Columns>
+
+---
+
+## Inbound events and drift
+
+### Webhooks
+
+Adapters translate provider events into normalized integration input.
+
+```text
+provider webhook
+      ↓
+signature verification
+      ↓
+Integration Connection
+      ↓
+provider event parser
+      ↓
+normalized event
+      ↓
+record first
+      ↓
+tenant-scoped processing
+```
+
+The adapter understands the provider payload. It does not bypass tenant resolution, which is defined in [Accounts, Tenancy & Identity](/architecture/foundation/accounts-tenancy-and-identity).
+
+The provider event is recorded before business processing.
+
+<Card title="Webhooks, Events & Command Queue" icon="inbox" horizontal href="/architecture/integrations-and-execution/webhooks-events-and-command-queue">
+  The durable inbound-event path.
+</Card>
+
+### Provider IDs
+
+Provider IDs remain provider identity.
+
+```text
+Rule & Form object
+      ↓
+Provider Mapping
+      ↓
+Integration Connection
+      ↓
+provider object ID
+```
+
+Do not spread provider-specific IDs across canonical domain tables.
+
+```text
+avoid
+
+leads.ghl_contact_id
+appointments.ghl_calendar_id
+sites.framer_project_id
+```
+
+Prefer provider integration state unless a provider-specific subsystem has a documented reason to store otherwise.
+
+### Reads
+
+Provider reads generally serve one of four purposes:
+
+```text
+execute a requested action
+resolve provider identity
+inspect provider reality
+reconcile provider state
+```
+
+Reading a provider value does not automatically make that value canonical. The one-authority rule from the [domain model](/architecture/foundation/domain-model-and-database-schema) still applies.
+
+```text
+provider-owned state
+    provider read may update a Rule & Form projection
+
+Rule & Form-owned state
+    provider read may inform reconciliation
+    but does not become canonical truth
+```
+
+### Reconciliation
+
+Adapters expose enough provider state to verify external reality.
+
+**A successful API response is not permanent proof that the systems remain synchronized.**
+
+```text
+Rule & Form expected state
+        ↕
+Provider Adapter
+        ↕
+provider actual state
+        ↓
+reconciliation
+```
+
+Provider-specific reconciliation details belong to the provider page.
+
+<Card title="Sync, Projections & Reconciliation" icon="refresh-cw" horizontal href="/architecture/integrations-and-execution/sync-projections-and-reconciliation">
+  The common reconciliation model.
+</Card>
+
+---
+
+## Change and provider replacement
+
+Provider replacement is an architectural requirement. It is not a promise that switching providers is free.
+
+```text
+Rule & Form Lead
+Rule & Form Conversation
+Rule & Form Appointment
+Rule & Form Site
+
+        remain
+
+current provider
+        ↓
+migration
+        ↓
+replacement provider
+```
+
+Migration may require new Integration Connections, new Provider Mappings, data migration, capability reprovisioning, adapter changes, reconciliation, and temporary dual-read or staged cutover behavior.
+
+**It must not require redefining what a Lead, Appointment, Site, Conversation, or Customer means.**
+
+### Provider-specific specifications
+
+<Columns cols={2}>
+  <Card title="HighLevel Integration" icon="message-square" href="/architecture/integrations-and-execution/highlevel-integration">
+    Authentication and token behavior, provider account structure, contacts and opportunities, conversations, calls and SMS, calendars, selected workflows, webhooks, mappings, reconciliation.
+  </Card>
+
+  <Card title="Framer Publishing" icon="upload" href="/architecture/integrations-and-execution/framer-publishing">
+    Project and resource model, publishing flow, CMS mapping, publication execution, domains, provider output references, reconciliation.
+  </Card>
+</Columns>
+
+A provider receives its own specification when its behavior becomes substantial enough that the common adapter contract no longer explains it.
+
+---
+
+## V1 adapter boundary
+
+V1 builds only the provider boundaries required for the first real product loop. <Badge color="blue" size="sm" stroke>V1 scope</Badge>
+
+```text
+HighLevel
+    messaging
+    conversations
+    phone / calling
+    appointments
+    selected execution required by V1
+
+Framer
+    website publishing
+```
+
+Payments are not required to prove the first provider-adapter architecture. If a payment provider becomes part of the product execution path, it receives the same adapter treatment when introduced.
+
+Rule & Form customer subscription billing does not automatically make Stripe a domain Provider Adapter concern.
+
+V1 does not require:
+
+- a universal integration SDK
+- one adapter interface for every provider
+- hypothetical provider implementations
+- generic abstractions before two real implementations prove they are shared
+- real external execution in local, preview, or demo environments
+
+**Build shared contracts only where the product already has a shared concept.** Provider-specific behavior may remain provider-specific behind the boundary.
+
+---
+
+## Acceptance conditions
+
+The adapter boundary is working when:
+
+- Business Hub code can send a message without constructing a HighLevel payload.
+- Website System code can publish without depending on Framer's domain model.
+- A provider ID cannot be used as Rule & Form identity.
+- Authentication failure becomes connection state rather than an unexplained product error.
+- A rate limit is reported by the adapter and rescheduled by workflow infrastructure.
+- Retries of one logical provider action do not create duplicate side effects.
+- Local and preview environments execute the same domain path through simulated adapters.
+- Simulated adapters pass the same contract tests as their real implementations.
+- The demo tenant cannot reach production customer provider resources.
+- Reconciliation can compare Rule & Form expected state with provider reality.
+- Replacing a provider does not require renaming canonical domain entities.
+
+These are architectural acceptance conditions, not provider-specific API tests.
+
+---
+
+## Foundation rules
+
+1. **Rule & Form domain logic uses Rule & Form concepts.**
+2. **Provider vocabulary, payloads, IDs, and API behavior stay behind provider boundaries.**
+3. **Integration Connection, Provider Mapping, and Provider Adapter are separate concepts.**
+4. **Provider credentials belong to Integration Connections; adapters receive usable credentials for one execution attempt.**
+5. **Provider IDs never replace Rule & Form identity or tenant authority.**
+6. **Adapters translate and execute behavior; they do not own product policy.**
+7. **Capability-specific interfaces are preferred over artificial universal provider interfaces.**
+8. **Provider mutations originate from explicit Rule & Form commands.**
+9. **Retryable side effects carry stable idempotency identity.**
+10. **Adapters detect rate limits and failures; durable workflows own waiting, retries, and recovery.**
+11. **Inbound provider events are normalized and recorded before business processing.**
+12. **Adapters expose enough provider reality for reconciliation.**
+13. **Local, preview, test, and demo execution uses simulated implementations of the same adapter contracts, verified by the same contract tests.**
+14. **Provider replacement may change infrastructure without redefining the Rule & Form domain.**
+
+The boundary exists so provider complexity stops where Rule & Form begins.
+
+**Own the domain. Translate the provider.**
+
+---
+
+## Next
+
+<Columns cols={2}>
+  <Card title="Webhooks, Events & Command Queue" icon="inbox" href="/architecture/integrations-and-execution/webhooks-events-and-command-queue">
+    How inbound provider events become durable work.
+  </Card>
+
+  <Card title="Sync, Projections & Reconciliation" icon="refresh-cw" href="/architecture/integrations-and-execution/sync-projections-and-reconciliation">
+    How drift between Rule & Form and providers is detected and resolved.
+  </Card>
+</Columns>

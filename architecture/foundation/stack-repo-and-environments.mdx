@@ -2,372 +2,266 @@
 title: "Stack, Repo & Environments"
 ---
 
-# Stack, Repo & Environments
-
 Rule & Form is a TypeScript application built on managed infrastructure.
 
-The product-specific work lives in our domain model, Business Record, intake, rendering, publishing, provisioning, operational logic, Workbench, and provider interfaces.
+Product-specific work lives in the domain model, Business Record, intake, rendering, publishing, provisioning, operational logic, Workbench, and provider interfaces. Generic infrastructure stays generic.
 
-Generic infrastructure stays generic.
+<Callout icon="terminal" color="#8B5CF6">
+  **For implementation** — this page defines architectural constraints and current platform choices. It does not prescribe file structure, helper functions, or implementation patterns unless stated as a rule. Inspect the current repository and linked specifications before changing working conventions.
+</Callout>
 
-> **For implementation:** this page defines architectural constraints and current platform choices. It does not prescribe exact file structure, helper functions, or implementation patterns unless stated as a rule. Inspect the current repository and linked specifications before changing working conventions.
-
-## Application stack
+## The stack
 
 | Layer | Choice | Role |
 | --- | --- | --- |
 | Application | Next.js · React · TypeScript | Portal, intake, Workbench, internal tools, APIs |
 | Database | PostgreSQL | Canonical application data |
 | Data access | Drizzle ORM | Schema, migrations, typed database access |
-| Authentication | Better Auth | Authentication, sessions, account membership |
+| Authentication | Better Auth | Identity, sessions, Organization membership |
 | Validation | Zod | Runtime, configuration, and schema validation |
 | Background work | Inngest | Durable workflows, retries, scheduled work |
 | Hosting | Vercel | Application hosting and preview deployments |
 | Source control | GitHub | Canonical repository and history |
-| File storage | S3-compatible object storage | Photos, uploads, and generated assets |
+| File storage | S3-compatible object storage | Photos, uploads, generated assets |
 | Email | Resend | Transactional application email |
-| Observability | Sentry · structured logs · workflow history | Application errors, system activity, asynchronous execution |
-
-The storage provider is deliberately not part of the architecture. The application depends on the storage contract, not a specific vendor.
+| Observability | Sentry · structured logs · workflow history | Errors, system activity, asynchronous execution |
 
 PostgreSQL is the database contract. The database host can change without changing the domain model.
 
-## Ownership boundary
+The storage vendor is deliberately absent from the architecture. The application depends on the storage contract, not a provider.
 
-Commodity application infrastructure includes authentication, sessions, account membership, storage, transactional email, deployment, error reporting, and UI primitives.
+### What we own
 
-Rule & Form owns the systems that contain Rule & Form knowledge:
+Commodity infrastructure covers authentication, sessions, membership, storage, transactional email, deployment, error reporting, and UI primitives.
 
-Business Record · trade schemas · structured intake · content state · rendering rules · template mappings · publishing · provisioning · operational domain · Workbench · provider adapters · audit history · contractor-facing product logic.
+Rule & Form owns the systems that accumulate Rule & Form knowledge:
+
+**Business Record · trade schemas · structured intake · content state · rendering rules · template mappings · publishing · provisioning · operational domain · Workbench · provider adapters · audit history**
 
 That boundary matters more than the vendor underneath any individual layer.
 
+<Accordion title="Why the vendor list is not the architecture">
+  Hosting, database hosting, storage, authentication libraries, and workflow runners are infrastructure. They can change. Rule & Form's domain objects and operating rules remain stable across those changes.
+
+  Naming the current provider documents what exists today. It does not grant permission to couple domain logic to that provider.
+
+  We do not build our own database engine, authentication protocol, object-storage service, deployment platform, telecom carrier, or distributed workflow runtime. Engineering effort goes into the parts that accumulate product knowledge.
+</Accordion>
+
+---
+
 ## Repository
 
-There is one canonical application repository.
+One canonical application repository. `main` is production.
 
-The application is organized around clear ownership boundaries:
+<Tree>
+  <Tree.Folder name="Application surfaces" />
+  <Tree.Folder name="Domain" />
+  <Tree.Folder name="Database" />
+  <Tree.Folder name="Business Record" />
+  <Tree.Folder name="Intake" />
+  <Tree.Folder name="Content" />
+  <Tree.Folder name="Publishing" />
+  <Tree.Folder name="Provisioning" />
+  <Tree.Folder name="Integrations" />
+  <Tree.Folder name="Validation" />
+  <Tree.Folder name="Shared UI" />
+</Tree>
 
-```text
-Application surfaces
-Domain
-Database
-Business Record
-Intake
-Content
-Publishing
-Provisioning
-Integrations
-Validation
-Shared UI
-```
+These are logical ownership boundaries, not mandatory folder names. Agents preserve the repository's working structure unless a change is required to enforce one of them.
 
-These are logical boundaries, not mandatory folder names.
+Three rules hold regardless of structure:
 
-Agents should preserve the repository's working structure unless a change is required to enforce one of these boundaries.
+- Business rules do not belong in page components.
+- Provider-specific behavior does not leak across the application.
+- Database access does not bypass the established data-access boundary for convenience.
 
-Business rules do not belong in page components.
+### Branches and merges
 
-Provider-specific behavior does not leak across the application.
+Work happens on short-lived branches. A branch represents one coherent change, and every meaningful branch is deployed to a preview environment before production merge.
 
-Database access does not bypass the established data-access boundary for convenience.
+Git is the source of truth for application code, migrations, schemas, configuration, and implementation history. Production-only fixes do not exist outside the repository.
 
-## Repository rules
-
-`main` is production.
-
-Work happens on short-lived branches.
-
-A branch represents one coherent change.
-
-Every meaningful branch is deployed to a preview environment before production merge.
-
-Git is the source of truth for application code, migrations, schemas, configuration, and implementation history.
-
-Production-only fixes do not exist outside the repository.
-
-## Merge gate
-
-A change is not ready because it works in one browser session.
-
-Repository CI must verify the checks appropriate to the change before merge.
-
-At minimum, the release gate covers:
+A change is not ready because it works in one browser session. Repository CI verifies the checks appropriate to the change, and a failing required check blocks merge.
 
 **Type safety · linting · automated tests · production build · migration safety**
 
-The exact commands and test suites belong to the testing specification and the repository itself.
+<Card title="Testing & Release Gates" icon="circle-check" horizontal href="/architecture/delivery/testing-fixtures-and-demo-reset">
+  Exact commands, suites, and gate configuration.
+</Card>
 
-A failing required check blocks merge.
-
-\[Testing & Release Gates →\]
+---
 
 ## Environments
 
-Rule & Form uses three application environments.
+<Tabs>
+  <Tab title="Local">
+    Non-production data and services.
 
-### Local
+    Safe to seed, reset, regenerate, corrupt, and delete test data.
 
-Local development uses non-production data and services.
+    Does not connect to production customer systems by default.
+  </Tab>
+  <Tab title="Preview">
+    Every meaningful branch can run as a deployed preview.
 
-It is safe to seed, reset, regenerate, corrupt, and delete test data.
+    Non-production data and provider connections.
 
-Local development does not connect to production customer systems by default.
+    Cannot modify live customer records, publish over customer websites, send through customer messaging accounts, or operate against production provider resources.
+  </Tab>
+  <Tab title="Production">
+    `main` deploys here.
 
-### Preview
+    Real customer data and real provider connections.
 
-Every meaningful branch can run as a deployed preview.
+    Only reviewed code from the canonical repository runs here.
+  </Tab>
+</Tabs>
 
-Preview environments use non-production data and provider connections.
+A separate staging environment is added when operating reality gives us a reason to maintain one. <Badge color="orange" size="sm" stroke>Deferred</Badge>
 
-They cannot modify live customer records, publish over customer websites, send through customer messaging accounts, or operate against production provider resources.
+### Public demo
 
-### Production
-
-`main` deploys the production application.
-
-Production contains real customer data and real provider connections.
-
-Only reviewed code from the canonical repository runs there.
-
-A separate staging environment is added when operating reality gives us a reason to maintain one.
-
-## Public demo
-
-The public demo runs the real Rule & Form application against a dedicated demo tenant containing synthetic data.
+The public demo runs the real application against a dedicated demo tenant containing synthetic data.
 
 It may share production application code. It does not share customer identity, data, provider mappings, publishing targets, messaging resources, or writable external resources with a real customer.
 
-Demo isolation uses the same tenant-boundary rules as the rest of the application, plus dedicated demo provider configuration where an external action is required.
+Demo isolation uses the same tenant-boundary rules as the rest of the application, plus dedicated demo provider configuration wherever an external action is required.
 
-A public demo action must be incapable of affecting a customer account.
+<Warning>
+  A public demo action must be incapable of affecting a customer account.
+</Warning>
 
-**Proof:** \[Open isolated demo →\]
+---
 
-## Tenant isolation
+## Data safety
 
-Tenant isolation is explicit in application data access.
+### Tenant isolation
 
-Every operation on tenant-owned data carries the relevant account or business identifier into the data-access layer.
+Tenant isolation is explicit in application data access. Every operation on tenant-owned data carries the authorized Organization into the data-access layer, and the scope is applied at the database query itself.
 
-Queries against tenant-owned tables apply that scope at the database query itself.
-
-Conceptually:
-
-```text
-request
-↓
-authenticated actor
-↓
-authorized account / business
-↓
-scoped data operation
-↓
-WHERE organization_id = current organization
+```mermaid
+flowchart TD
+    A[Request] --> B[Authenticated actor]
+    B --> C[Authorized Organization]
+    C --> D[Scoped data operation]
+    D --> E["WHERE organization_id = :authorizedOrganization"]
 ```
 
-This rule applies equally to customer requests, internal tools, webhooks, background jobs, provider commands, and reconciliation work.
+This applies equally to customer requests, internal tools, webhooks, background jobs, provider commands, and reconciliation work.
 
-We do not retrieve global customer data and rely on frontend filtering.
+Authentication answers **who is acting**. Tenant scope answers **which data that action can reach**.
 
-We do not rely on database Row Level Security as the primary tenant-isolation mechanism. Privileged server processes can operate outside user-scoped database policies, so tenant scope remains mandatory in application data access.
+<Warning>
+  We do not retrieve global customer data and filter in the frontend. We do not rely on Row Level Security as the primary isolation mechanism.
+</Warning>
 
-Database policies may add defense in depth. They do not replace explicit tenant scoping.
+<Accordion title="Why RLS is not the primary mechanism">
+  Privileged server processes — background work, migrations, internal operations, integrations — operate outside user-scoped database policies. Tenant scope therefore remains mandatory in application data access.
 
-Authentication answers **who is acting**.
+  Database policies may add defense in depth. They do not replace explicit tenant scoping.
+</Accordion>
 
-Tenant scope answers **which data that action can reach**.
+<Card title="Accounts, Tenancy & Identity" icon="shield" horizontal href="/architecture/foundation/accounts-tenancy-and-identity">
+  Authorization policy and tenant resolution.
+</Card>
 
-\[Accounts, Tenancy & Identity →\]
-
-## Database changes
+### Database changes
 
 Database structure changes through version-controlled migrations.
 
-```text
-Change schema
-↓
-Create migration
-↓
-Validate against non-production data
-↓
-Commit with application code
-↓
-Preview
-↓
-Deploy safely
-```
+<Steps>
+  <Step title="Change the schema">
+    Alongside the application code that requires it.
+  </Step>
+  <Step title="Create the migration">
+    Version-controlled, committed with the code.
+  </Step>
+  <Step title="Validate against non-production data">
+    In local or preview, never against production.
+  </Step>
+  <Step title="Preview, then deploy">
+    Repository history must contain enough information to reconstruct the schema.
+  </Step>
+</Steps>
 
 Production tables are not changed through undocumented manual edits.
 
-Repository history must contain enough information to reconstruct the schema.
+Application code and database state do not change atomically. Where a change would break an adjacent deployment, use an expand-contract sequence.
 
-Schema changes must account for the fact that application code and database state do not change atomically.
+<Accordion title="Expand-contract sequence">
+  1. Add compatible structure.
+  2. Deploy code that supports both states.
+  3. Move data or behavior across.
+  4. Remove the obsolete structure in a later release.
 
-Where a change would otherwise break an adjacent deployment, use an expand-contract sequence:
+  A destructive schema change is not coupled blindly to the first deploy that stops using the old structure.
+</Accordion>
 
-```text
-Add compatible structure
-↓
-Deploy code that supports both states
-↓
-Move data / behavior
-↓
-Remove obsolete structure later
-```
+### Rollback
 
-## Rollback
+Application code can be returned to a known previous deployment. Database migrations do not roll back with it.
 
-Application code can be returned to a known previous deployment.
-
-Database migrations do not automatically roll back with application code.
-
-Production migrations are therefore treated as forward-moving changes and must remain compatible with the deployment states that can legitimately coexist during release.
-
-A destructive schema change is not coupled blindly to the first deploy that stops using the old structure.
+Production migrations are therefore forward-moving changes that must remain compatible with the deployment states that legitimately coexist during a release.
 
 Rollback strategy is part of the migration, not something invented after the release fails.
 
-## Backups and recovery
+### Backup and recovery
 
-Production customer data requires automated database backup and point-in-time recovery, or an equivalent recovery capability.
-
-Recovery configuration, retention, and restore procedures are operating requirements, not assumptions.
+Production customer data requires automated database backup and point-in-time recovery, or an equivalent capability.
 
 A backup is only useful if it can be restored. Recovery is tested periodically against non-production infrastructure.
 
-Exact retention and recovery objectives belong in the data-recovery specification rather than being frozen here.
+Recovery configuration, retention, and restore procedures are operating requirements, not assumptions. Exact objectives belong in the data-recovery specification.
 
-\[Backup & Recovery →\]
+---
 
-## Secrets and configuration
+## Operations
 
-Secrets never live in source code.
+### Secrets and configuration
 
-Local secrets live in ignored environment configuration.
+| Rule | Applies to |
+| --- | --- |
+| Secrets never live in source code | All environments |
+| Local secrets live in ignored environment configuration | Local |
+| Hosted secrets are scoped to the environment that requires them | Preview · Production |
+| Server-only credentials never reach the browser | All environments |
+| Provider tokens never appear in logs | All environments |
+| Production credentials are never copied into preview | Preview |
 
-Hosted secrets are scoped to the environment that requires them.
+Required environment configuration is schema-validated when the application starts. Missing or invalid configuration fails visibly rather than allowing the application to start in an unknown state.
 
-Server-only credentials never reach the browser.
+### Observability
 
-Provider tokens do not appear in logs.
-
-Production credentials are not copied into preview merely to make a test easier.
-
-Required environment configuration is schema-validated when the application starts. Missing or invalid required configuration fails visibly rather than allowing the application to start in an unknown state.
-
-## Observability
-
-Thrown exceptions are only one class of failure.
-
-Rule & Form must also expose the state of asynchronous and external work.
-
-The operating picture includes:
+Thrown exceptions are only one class of failure. Rule & Form must also expose the state of asynchronous and external work.
 
 **Application errors · structured logs · workflow runs · provider commands · provider events · audit history**
 
-A publishing run stuck in retry is visible.
+A publishing run stuck in retry is visible. A failed provider command is visible. A webhook that arrived but failed processing is visible.
 
-A failed provider command is visible.
+<Card title="Audit & Observability" icon="activity" horizontal href="/architecture/control/audit-and-observability">
+  Event model, retention, alerting, and operating views.
+</Card>
 
-A webhook that arrived but failed processing is visible.
+### Deployment
 
-The detailed event model, retention, alerting, and operating views belong in the observability specification.
+Application deployment follows Git — local change, feature branch, CI, preview, review, merge to `main`, production.
 
-\[Audit & Observability →\]
+Long-running publishing and provisioning work executes independently of the browser request that initiated it. Closing a browser does not terminate a deployment, and a provider failure does not require replaying successful steps from the beginning.
 
-## Development workflow
+---
 
-Cursor, Claude Code, Codex, MCP-connected tools, and other development interfaces operate against the same repository.
+## Working with the Build Spec
 
-They are not architectural dependencies.
+Cursor, Claude Code, Codex, MCP-connected tools, and other development interfaces operate against the same repository. They are not architectural dependencies, and no development tool gets its own source of truth.
 
-No development tool gets its own source of truth.
+<Callout icon="terminal" color="#8B5CF6">
+  **For implementation** — before changing an existing subsystem, inspect the current repository, the relevant Build Spec pages, existing tests and migrations, and the current provider boundary where applicable.
 
-Before changing an existing subsystem, an agent should inspect:
+  The Build Spec defines intent and invariants. The repository defines the implementation that exists now. When the two conflict, surface and resolve the conflict deliberately rather than silently rewriting one to match the other.
+</Callout>
 
-1. the current repository,
-2. the relevant Build Spec pages,
-3. existing tests and migrations,
-4. the current provider boundary where applicable.
-
-The Build Spec defines intent and invariants.
-
-The repository defines the implementation that exists now.
-
-When the two conflict, the conflict should be surfaced and resolved deliberately rather than silently rewriting one to match the other.
-
-## Deployment
-
-Application deployment follows Git.
-
-```text
-Local change
-↓
-Feature branch
-↓
-Repository CI
-↓
-Preview deployment
-↓
-Review
-↓
-Merge to main
-↓
-Production
-```
-
-Application deployment does not require manual file copying or undocumented production edits.
-
-Long-running publishing and provisioning work executes independently of the browser request that initiated it.
-
-Closing a browser does not terminate a deployment.
-
-A provider failure does not require replaying successful steps from the beginning.
-
-## Infrastructure boundary
-
-Hosting, database hosting, storage, authentication libraries, workflow runners, and external execution platforms are infrastructure.
-
-They can change.
-
-Rule & Form's domain objects and operating rules remain stable across those changes.
-
-Current examples include:
-
-```text
-Application hosting
-    Vercel
-
-Database contract
-    PostgreSQL
-
-Website publishing
-    Framer
-
-Communications
-    Provider adapter
-
-Scheduling
-    Provider adapter
-
-Workflow execution
-    Durable workflow layer
-```
-
-The named current provider documents what exists.
-
-It does not grant permission to couple domain logic to that provider.
-
-## What we do not build
-
-We do not build generic infrastructure for its own sake.
-
-Rule & Form does not need its own database engine, authentication protocol, object-storage service, deployment platform, telecom carrier, or distributed workflow runtime.
-
-Engineering effort goes into the parts that accumulate product knowledge:
-
-trade schemas · intake logic · Business Record structure · content state · rendering rules · publishing safety · provisioning logic · operational model · integrations · inspection tooling.
+---
 
 ## Foundation rules
 
@@ -376,7 +270,7 @@ trade schemas · intake logic · Business Record structure · content state · r
 3. **Every meaningful change is previewable before merge.**
 4. **Required CI checks block unsafe merges.**
 5. **Non-production cannot affect production customer systems.**
-6. **Every tenant-owned data operation carries explicit tenant scope.**
+6. **Every tenant-owned data operation carries explicit Organization scope.**
 7. **Database migrations are versioned and deployment-compatible.**
 8. **Code rollback never assumes database rollback.**
 9. **Production data has a tested recovery path.**
@@ -388,4 +282,28 @@ trade schemas · intake logic · Business Record structure · content state · r
 
 **The repository is the application. The Build Spec defines the constraints it must preserve.**
 
-**Proof:** \[Open production application →\] · \[Open isolated demo →\]
+---
+
+## Proof
+
+<Columns cols={2}>
+  <Card title="Production application" icon="external-link" href="https://app.ruleandform.com">
+    The live system this page describes.
+  </Card>
+
+  <Card title="Isolated demo" icon="flask-conical" href="https://demo.ruleandform.com">
+    Real application, synthetic tenant, no customer reach.
+  </Card>
+</Columns>
+
+## Next
+
+<Columns cols={2}>
+  <Card title="Domain Model & Database Schema" icon="database" href="/architecture/foundation/domain-model-and-database-schema">
+    How the schema enforces what this page requires.
+  </Card>
+
+  <Card title="Accounts, Tenancy & Identity" icon="shield" href="/architecture/foundation/accounts-tenancy-and-identity">
+    Who is allowed to reach which tenant.
+  </Card>
+</Columns>

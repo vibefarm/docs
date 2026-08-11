@@ -1,0 +1,241 @@
+---
+title: "Funnel"
+---
+
+Yes. I think we **should add it**, even if V1 is only one strong page. Right now the Build Spec explains _what we build and how the system works_, but not enough about **how a stranger becomes a customer and then becomes an active account**.
+
+That matters because product decisions are already being shaped by the funnel: free homepage preview, supply-house referrals, outbound calling, homepage framing, \$299 plan, onboarding, provisioning, and eventually retention/referrals. If we don't map that somewhere, those decisions will get made independently.
+
+I would not put it in `foundation/`. I’d create a small **Growth / Go-to-Market** section, or whatever less-marketing-sounding name we want. First page:
+
+# Acquisition & Conversion Funnel
+
+And keep it very high level initially.
+
+The core map should probably be:
+
+```text
+Market
+  ↓
+Reachable segment
+  ↓
+Qualified prospect
+  ↓
+First touch
+  ↓
+Homepage / landing experience
+  ↓
+Interest
+  ↓
+Low-friction commitment
+  ↓
+Sales conversation
+  ↓
+Offer
+  ↓
+Customer
+  ↓
+Intake
+  ↓
+First value
+  ↓
+Activated account
+  ↓
+Retained customer
+  ↓
+Referral / expansion
+```
+
+Then we map the actual Rule & Form mechanisms onto it:
+
+```text
+AWARENESS / ACQUISITION
+
+Cold outbound
+Supply-house referral
+Direct / search
+Partner referral
+Future paid acquisition
+
+        ↓
+
+FIRST IMPRESSION
+
+Homepage
+Trade landing page
+Referral-specific page
+Sales-call framing
+
+        ↓
+
+LENS
+
+"The trades don't lack solutions.
+They have a problem with the solutions."
+
+        ↓
+
+PROOF + UNDERSTANDING
+
+Design quality
+Managed delivery model
+Follow-up system
+Spanish
+Integrations
+Real examples
+
+        ↓
+
+LOW-FRICTION YES
+
+See your homepage first — free
+
+        ↓
+
+SALES CONVERSION
+
+Preview
+Conversation
+$299 managed plan
+$0 setup
+month-to-month
+
+        ↓
+
+ONBOARDING
+
+Structured Intake
+Business Record
+connections
+Design Direction / Site Type selection
+
+        ↓
+
+FIRST VALUE
+
+Site preview
+Site live
+lead captured
+follow-up works
+Business Hub populated
+
+        ↓
+
+ACTIVATION
+
+Customer has experienced the system,
+not merely paid for it
+
+        ↓
+
+RETENTION / EXPANSION
+
+Managed changes
+additional capabilities
+additional sites
+referrals
+```
+
+That page should also establish a few concepts that will help us constantly.
+
+### 1. Funnel stage ≠ channel
+
+Cold calling, Lone Star Supply, search, referral, and paid ads are **channels**.
+
+They can all feed the same funnel.
+
+We don't want five completely different sales systems just because prospects entered from different places.
+
+### 2. Conversion ≠ purchase
+
+There are several conversions:
+
+```text
+stranger → engaged visitor
+visitor → lead
+lead → preview request
+preview request → sales conversation
+sales conversation → paid customer
+paid customer → activated customer
+activated customer → retained customer
+retained customer → advocate
+```
+
+That alone is worth documenting, because it stops us from treating "conversion rate" as one number.
+
+### 3. The hero owns the interpretive lens
+
+This should absolutely become a rule on the page after what we were just discussing.
+
+For each acquisition surface, define:
+
+```text
+ARRIVES
+What situation are they in?
+
+BELIEVES
+What do they currently think?
+
+LENS
+How should they interpret what follows?
+
+PROOF
+What must they see to believe us?
+
+NEXT YES
+What is the lowest-friction meaningful commitment?
+```
+
+That framework could eventually become part of **how Rule & Form generates websites for customers**, not just how we market Rule & Form.
+
+### 4. Activation needs an explicit definition
+
+This is especially important for a subscription company.
+
+A contractor paying \$299 is not necessarily activated.
+
+For V1, I might define Rule & Form activation as something close to:
+
+> **A Site is live and the Business has experienced at least one core operating loop through Rule & Form.**
+
+For example:
+
+```text
+Site live
+  +
+lead received
+  +
+follow-up / communication visible
+```
+
+We can refine that, but having an activation definition will later matter enormously for onboarding, instrumentation, churn analysis, and product priorities.
+
+### 5. Funnel economics eventually hang off this map
+
+Later, every transition can get metrics:
+
+```text
+prospects reached
+→ conversations
+→ previews
+→ closes
+→ launches
+→ activations
+→ 30-day retained
+→ 90-day retained
+→ referrals
+```
+
+Then channel economics become intelligible rather than "cold calling seems to work."
+
+---
+
+I actually think we should eventually have **three tightly related pages**, but only write the first now:
+
+**Acquisition & Conversion Funnel** — how someone becomes a customer. **Activation & Customer Lifecycle** — how a paid customer reaches value, stays, expands, and leaves. **Channels & Experiments** — outbound, supply houses, referrals, search, paid, codes, attribution, experiments.
+
+That gives the commercial side the same discipline we're giving the architecture without turning Mintlify into an MBA textbook.
+
+And the funnel page could be quite short, maybe **1,500–2,000 words max**. Its purpose is to establish the map and vocabulary so every homepage, campaign, Site Type, sales script, and onboarding decision has somewhere to attach.
+
+**Distilled insight:** we shouldn't document "marketing." We should document the **state transitions between stranger and successful customer**. That is a system, just like provisioning or publishing.

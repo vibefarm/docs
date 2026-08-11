@@ -1,3 +1,762 @@
 ---
 title: "Framer Publishing"
+description: "How Rule & Form assigns Framer projects, maps canonical state into CMS and localization, publishes safely, and preserves exact publication provenance."
 ---
+
+Publishing is a controlled state transition, not a CMS sync.
+
+Rule & Form decides what a Site should contain. Framer renders and hosts the resulting website.
+
+A publish must be reproducible, resumable after partial failure, safe around manual edits, and traceable to the exact Business Record, Content State, template, and mapping that produced it.
+
+<Callout icon="terminal" color="#8B5CF6">
+  **For implementation** — never publish directly from mutable current state. A Publishing Run freezes its input versions first, writes only the Framer surfaces Rule & Form owns, verifies the resulting deployment, and records the outcome before the Site is considered current. [Provider Adapters](/architecture/integrations-and-execution/provider-adapters) owns the shared boundary; this page owns Framer-specific behavior.
+</Callout>
+
+## Role and project assignment
+
+```text
+Rule & Form Site
+      ↓
+Publishing Target
+      ↓
+Framer Project
+```
+
+A Framer project is provider infrastructure. **It is not the Rule & Form Site.**
+
+### Project pool
+
+Rule & Form maintains a prepared pool of Framer projects organized by the website implementation they can serve.
+
+```text
+Site Type
++
+Design Direction
++
+Template Version
+        ↓
+Framer Project Pool
+        ↓
+available project
+        ↓
+reserved
+        ↓
+assigned to Site
+```
+
+| Pool state | Meaning |
+| --- | --- |
+| `available` | Prepared, unclaimed, matches a known implementation combination |
+| `reserved` | Claimed by an in-flight provisioning run, not yet assigned |
+| `assigned` | Attached to a Site |
+| `quarantined` | Withdrawn from allocation pending inspection |
+
+**Allocation is atomic.** Two provisioning runs must never claim the same project.
+
+Systematic project names may make inventory easy to inspect, but names are not allocation authority. Rule & Form stores the actual project identity and assignment.
+
+A project enters `quarantined` when its structure fails preflight against the implementation it was prepared for, when a run leaves it in an uncertain partial state that convergence did not resolve, or when an operator withdraws it deliberately. A quarantined project returns to `available` only after explicit verification, and never automatically.
+
+### Assignment lifetime
+
+Once assigned, the project normally remains attached to the Site for future publishes.
+
+```text
+Site
+  ↓
+assigned Framer Project
+  ↓
+publish 1
+publish 2
+publish 3
+```
+
+**A Site does not consume a new project every time content changes.**
+
+The pool is keyed by Site Type, Design Direction, and Template Version, so a change to any of those raises the question of whether the assigned project can still serve the Site.
+
+```text
+Template Version change
+    within the same implementation family
+        ↓
+    same project retained
+    preflight validates the new expected structure
+
+
+Site Type or Design Direction change
+    different implementation
+        ↓
+    new project allocated from the matching pool
+        ↓
+    Site publishing target reassigned
+        ↓
+    prior project released or quarantined
+```
+
+Reassignment is an explicit provisioning operation, not a side effect of a content publish. Historical Published Snapshots continue to reference the Framer project and deployment that actually produced them.
+
+### Publishing target
+
+The Site's Framer publishing state needs enough information to reconnect safely.
+
+```text
+Site Publishing Target
+
+organization_id
+business_id
+site_id
+
+provider = framer
+framer_project_id
+framer_project_url
+
+api_key_secret_ref
+assignment_status
+
+template_version
+last_verified_at
+```
+
+Framer Server API keys are bound to a specific project, so project identity and credential reference travel together as provider configuration. Server-side connections are created through the `framer-api` package using the project URL or ID plus that project's API key.
+
+Credentials remain server-side.
+
+---
+
+## Publish inputs
+
+A Publishing Run freezes the versions that define the intended output before touching Framer.
+
+```text
+Business Record Version
+        +
+Content State Version
+        +
+Site configuration
+        +
+Site Type
+        +
+Design Direction
+        +
+Template Version
+        +
+Publishing Mapping Version
+        +
+Locale configuration
+        ↓
+Resolved publish state
+```
+
+The run must not begin with _give me whatever the Business Record looks like now_ and then reread mutable state halfway through execution.
+
+**The same run uses the same input versions from beginning to end.**
+
+### Authority
+
+| Input | Owns |
+| --- | --- |
+| Business Record Version | Canonical facts |
+| Content State Version | Approved expression, overrides, locks |
+| Site Type | Structural purpose and selling logic |
+| Design Direction | Visual language |
+| Template Version | Rendering implementation |
+| Publishing Mapping Version | Rule & Form → Framer transformation |
+| Site configuration | Domains, locales, publishing target |
+
+Framer does not decide these. It receives their resolved output.
+
+### Mapping into Framer
+
+The Publishing Mapping translates Rule & Form concepts into the assigned project's actual CMS and localization structures.
+
+```text
+Rule & Form
+
+service.name
+service.description
+service.photo
+service.area
+business.phone
+business.hours
+
+        ↓
+
+Publishing Mapping
+
+        ↓
+
+Framer
+
+Collection
+Item
+Field
+Locale value
+Asset
+```
+
+The mapping is versioned independently from the Business Record and Template. **A field can change where it publishes without changing what the field means.**
+
+### Project structure preflight
+
+Before writing, the publisher inspects the assigned project's expected structure. Framer exposes project info, collections, fields, and collection items through the Server API.
+
+Preflight verifies at least:
+
+- Correct project
+- Expected collections exist
+- Expected fields exist
+- Expected field types match
+- Required locales exist
+- Publishing permission exists
+- Deploy permission exists when needed
+
+A structural mismatch is not repaired by guessing. If the Template Version expects `Services.description` and the assigned project no longer contains that field, the run stops with a mapping or project-structure error.
+
+**Do not silently create a slightly different schema and continue.**
+
+### Provider IDs
+
+Framer collection IDs, field IDs, item IDs, deployment IDs, and asset references are provider identity. They may be persisted in publishing mappings or provider state where needed.
+
+<Callout icon="lock" color="#E2E8F0">
+  Framer provider identifiers never become Rule & Form identity.
+</Callout>
+
+---
+
+## Writing to Framer
+
+### CMS desired state
+
+Rule & Form publishes desired CMS state, not a collection of random field mutations.
+
+```text
+canonical inputs
+      ↓
+mapping rules
+      ↓
+complete desired items
+      ↓
+compare / reconcile
+      ↓
+Framer CMS
+```
+
+Framer can list and modify CMS collections, fields, and items. `addItems()` can create new items and update existing ones.
+
+Updates send complete desired field data for the managed item. **Do not depend on omitted fields remaining unchanged.**
+
+<Accordion title="Why complete payloads survive the SDK version change">
+  Framer documents a transition in `addItems()` behavior: existing-item updates that merge omitted fields in 3.x become full replacement in 4.0, and Framer recommends including all fields when updating existing items.
+
+  Writing complete deterministic payloads makes the Rule & Form rule correct under both behaviors, so the publisher does not need to branch on SDK version.
+</Accordion>
+
+### Items and slugs
+
+Rule & Form keeps stable identity for its own entities. Framer items receive provider mappings or another deterministic association so later publishes update the correct item.
+
+```text
+Rule & Form Service ID
+        ↓
+Framer item mapping
+        ↓
+Framer CMS item
+
+slug may change
+mapping remains
+```
+
+Slugs remain routing values, not identity. Framer requires collection-item slugs to be unique within a collection.
+
+### Removed content
+
+Desired-state publishing includes removal.
+
+If a service, location, offer, or other managed item no longer belongs on the Site, the mapping defines whether the Framer item should be removed, drafted, or retained but excluded.
+
+That choice is explicit per content type. **It is not achieved by simply stopping updates to the old item.**
+
+Framer CMS items support draft state, and drafts are excluded from publication.
+
+### Assets
+
+Rule & Form retains the canonical asset and its metadata. Framer receives the publishing representation.
+
+```text
+Rule & Form Asset
+      ↓
+publisher
+      ↓
+Framer Asset
+      ↓
+CMS / Site output
+```
+
+Framer supports uploading an image without first assigning it to a Canvas node through `uploadImage()`, including image source, name, alt text, and resolution options.
+
+The publishing system stores enough provider state to reuse an already uploaded asset rather than uploading the same file on every run:
+
+```text
+Rule & Form asset ID
+content hash
+Framer asset reference
+last verified
+```
+
+Asset upload is its own durable step. A failed image upload does not require restarting Business Record validation or unrelated CMS work.
+
+### Localization
+
+Localization is explicit publishing state.
+
+```text
+Content State
+
+English
+Spanish
+
+      ↓
+
+Publishing Mapping
+
+      ↓
+
+Framer locale values
+```
+
+Framer exposes project Locales, Localization Groups, Localization Sources, and `setLocalizationData()`. CMS item operations can also carry locale-specific field values and locale status.
+
+Rule & Form owns the localized content. **Framer does not become the translation source of truth.**
+
+The publisher validates that required project locales exist before writing localized output. For CMS content, localized values may be written with the item data. For non-CMS localization sources, the publisher resolves localization groups and sources and updates them through Framer's localization APIs.
+
+A locale or item that should not publish must be explicitly excluded rather than left in an ambiguous partial state.
+
+---
+
+## Publishing lifecycle
+
+Framer's Server API can update projects and publish them from server-side code without the Framer editor being open. The connection is stateful.
+
+<Steps>
+  <Step title="Freeze inputs">
+    Resolve and pin every version in the publish-input set.
+  </Step>
+  <Step title="Resolve and connect">
+    Resolve the assigned Framer project, then open the Server API connection.
+  </Step>
+  <Step title="Preflight and check divergence">
+    Validate project structure. Check locks and provider divergence before any write.
+  </Step>
+  <Step title="Write managed state">
+    Resolve and upload assets, write desired CMS state, write localization, then validate provider state.
+  </Step>
+  <Step title="Publish and inspect">
+    Call `publish()`, then poll the deployment and inspect deployment issues.
+  </Step>
+  <Step title="Promote and verify">
+    Promote to production where the project configuration requires it, then verify live production output.
+  </Step>
+  <Step title="Record and release">
+    Record the Published Snapshot, move the Site current pointer, and disconnect.
+  </Step>
+</Steps>
+
+The connection is closed on every exit path, including failure. A run that fails at any step disconnects before terminating rather than leaking a stateful provider connection.
+
+### Publish
+
+Framer's `publish()` publishes the project's current form and returns a deployment with an initial status snapshot. It does not wait for deployment optimization to finish.
+
+Publishing behavior depends on the project context:
+
+```text
+branch publish
+    affects that branch
+
+main with staging enabled
+    publishes to staging
+
+main without staging
+    publishes directly to production
+```
+
+Rule & Form records the actual deployment ID and returned hostnames rather than assuming every `publish()` call means the same environment.
+
+### Deployment inspection
+
+```text
+deployment ID
+      ↓
+getDeployment()
+      ↓
+pending / optimizing
+      ↓
+ready or failure
+```
+
+A ready deployment may still contain warnings. Framer provides `getDeploymentIssues()` for normalized optimization issues, so **"ready" alone is not sufficient evidence that the deployment is clean.**
+
+Warnings are classified as acceptable, requires review, or blocks promotion. That policy belongs to Rule & Form.
+
+### Domains and production promotion
+
+Framer's `deploy(deploymentId)` points configured custom domains at a published deployment. If no custom domain is configured, the call returns no deployed hostnames.
+
+Domain configuration is provisioning work, not publishing work. A Site publishes and verifies on its Framer-provided hostname regardless of custom-domain state, and custom-domain readiness is capability state like any other:
+
+```text
+Site
+    LIVE on provider hostname
+
+Custom domain
+    ACTION NEEDED
+        ↓
+    DNS delegated / records verified
+        ↓
+    domain configured in Framer project
+        ↓
+    LIVE on customer domain
+```
+
+Rule & Form calls `deploy()` only when explicit promotion is required by the project's publishing configuration. A deployment that `publish()` already placed on production does not need promoting again to satisfy a hard-coded workflow. **The publisher must understand the actual target state.**
+
+### Production verification
+
+Provider success is not enough. After production publication, Rule & Form verifies the live output:
+
+- Expected production URL resolves
+- Expected deployment is current
+- Critical page responds
+- Known business identity appears
+- Required locale output exists
+- No blocking publish issue remains
+
+Framer exposes staging and production publish information through `getPublishInfo()`, including current URLs and optimization state.
+
+Only after verification does the Site move its `current_published_snapshot` pointer.
+
+---
+
+## Safe regeneration
+
+Rule & Form owns a defined managed surface inside the Framer project. The publisher does not rewrite everything merely because the API can access it.
+
+```text
+Framer Project
+
+Rule & Form managed
+    CMS fields
+    mapped items
+    mapped localization
+    mapped assets
+    explicitly managed settings
+
+not automatically managed
+    unrelated canvas edits
+    unrelated CMS content
+    unowned project configuration
+```
+
+This protects the system from turning regeneration into destruction.
+
+### Locks and overrides
+
+```text
+Business Record value
+      ↓
+generated content
+      ↓
+manual override / lock
+      ↓
+Content State Version
+      ↓
+publisher
+```
+
+The publisher consumes the resolved Content State. **It does not bypass locks because the underlying Business Record changed.**
+
+<Card title="Overrides, Locks & Safe Regeneration" icon="history" horizontal href="/architecture/control/overrides-locks-and-safe-regeneration">
+  How locks and overrides resolve into Content State.
+</Card>
+
+### Framer divergence
+
+A human may also change provider state directly. Before replacing an existing Rule & Form-managed value, the publisher compares three things:
+
+```text
+last Published Snapshot
+        ↓
+expected previous value
+
+current Framer value
+        ↓
+provider reality
+
+next Rule & Form value
+        ↓
+desired state
+```
+
+```text
+expected previous == current provider
+    safe normal regeneration
+
+expected previous != current provider
+    provider changed outside Rule & Form
+    ↓
+review / lock / explicit resolution
+```
+
+V1 favors review over blindly overwriting unexplained divergence, which is appropriate during the early customer phase when manual adjustments are expected. <Badge color="blue" size="sm" stroke>V1 scope</Badge>
+
+Workbench is the eventual inspection surface for this relationship:
+
+```text
+SYSTEM VALUE
+LIVE FRAMER VALUE
+LAST PUBLISHED VALUE
+
+MATCHED
+or
+DIVERGED
+```
+
+---
+
+## Failure and recovery
+
+### One active run per Site
+
+A Site has at most one active Publishing Run at a time.
+
+```text
+Publishing Run in progress
+        ↓
+second publish requested
+        ↓
+queued or rejected
+        ↓
+never interleaved
+```
+
+The Framer Server API is not transactional and its connection is stateful, so two concurrent runs writing the same project would produce a project matching neither run's frozen inputs. Serialization is a correctness requirement, not a performance choice.
+
+### Partial failure
+
+Framer explicitly documents that the Server API is not transactional. A script can fail after some changes have already been applied.
+
+Rule & Form therefore treats publishing as a durable multi-step workflow.
+
+```text
+Publishing Run
+
+preflight              COMPLETE
+assets                 COMPLETE
+CMS                    COMPLETE
+localization           FAILED
+publish                WAITING
+production             WAITING
+```
+
+A retry resumes from durable execution state. **It does not pretend the project rolled back.**
+
+### Convergence over rollback
+
+The primary recovery strategy is to converge the assigned project back to the frozen desired state.
+
+```text
+partial provider state
+        ↓
+same frozen inputs
+        ↓
+retry failed / uncertain steps
+        ↓
+complete desired state
+```
+
+Do not automatically create a new Business Record Version or Content State Version because Framer failed. The original Publishing Run is still attempting to publish the same inputs.
+
+Where convergence cannot resolve an uncertain project state, the project is quarantined and the Site is reassigned rather than left in an unknown condition.
+
+### No accidental promotion
+
+<Callout icon="lock" color="#E2E8F0">
+  A failed or uncertain run never advances production state. The Site's current snapshot continues to point at the last verified publication.
+</Callout>
+
+```text
+CMS written
+publish failed
+    ↓
+Site current snapshot unchanged
+
+
+deployment created
+verification failed
+    ↓
+Site current snapshot unchanged
+```
+
+---
+
+## Published Snapshot
+
+A Published Snapshot records the exact Rule & Form and provider state associated with a publication outcome.
+
+```text
+Published Snapshot
+
+organization
+business
+site
+
+Business Record Version
+Content State Version
+Template Version
+Publishing Mapping Version
+
+Framer project
+Framer deployment ID
+published hostnames
+
+publication result
+verification result
+timestamps
+```
+
+The snapshot is immutable. The Site's pointer to the current successful snapshot is mutable.
+
+```text
+Site
+  ↓
+current_published_snapshot_id
+  ↓
+Snapshot 27
+```
+
+A later publish creates another snapshot. It does not mutate Snapshot 27.
+
+If execution fails before Framer produces a meaningful deployment outcome, the Publishing Run remains the failure record. **A failed run never becomes the Site's current publication.**
+
+---
+
+## V1 boundary
+
+<Tabs>
+  <Tab title="Required">
+    V1 proves a complete, repeatable publication loop.
+
+    - Framer project pool
+    - Atomic project reservation
+    - Persistent Site → Framer project assignment
+    - Project-bound credential reference
+    - Publishing Run with frozen input versions
+    - Single active run per Site
+    - Project-structure preflight
+    - Versioned Publishing Mapping
+    - Business Record → CMS mapping
+    - Content State → CMS mapping
+    - Deterministic complete CMS item updates
+    - Item removal and draft handling
+    - Image upload and provider asset mapping
+    - English and Spanish publishing
+    - Publish execution
+    - Deployment polling
+    - Deployment-issue inspection
+    - Production promotion where required
+    - Live production verification
+    - Immutable Published Snapshot
+    - Current Site snapshot pointer
+    - Durable resume after partial failure
+    - Lock and override awareness
+    - Basic provider-divergence protection
+    - Workbench-readable publication history
+  </Tab>
+  <Tab title="Deferred">
+    V1 does not require:
+
+    - Arbitrary Canvas generation
+    - Customer-facing Framer editing
+    - Branch-per-publish workflows
+    - Generalized visual diffing
+    - Automatic merging of conflicting provider edits
+    - Multiple publishing providers
+    - Sophisticated rollout or canary deployment
+    - Dynamic generation of entirely new Template structures
+    - Rebuilding Framer's editor inside Rule & Form
+    - Publishing every Site configuration through one universal mapping
+  </Tab>
+</Tabs>
+
+---
+
+## Acceptance conditions
+
+Framer Publishing is working when:
+
+- A Site receives exactly one matching Framer project assignment.
+- Concurrent provisioning cannot allocate the same project twice.
+- A second publish request for one Site cannot interleave with a run already in progress.
+- A Publishing Run uses frozen Business Record and Content State versions.
+- The publisher rejects an incompatible project structure before writing.
+- A service added to the Business Record appears in the correct Framer collection.
+- Removing managed content removes or excludes it according to the mapping rule.
+- Retrying an update does not depend on omitted CMS fields surviving.
+- An image can be uploaded and reused through stored provider state.
+- Spanish content publishes through explicit Framer locale data.
+- `publish()` produces a tracked deployment ID.
+- Rule & Form waits for deployment state rather than assuming `publish()` is finished.
+- Blocking deployment issues prevent promotion.
+- Production promotion targets the intended configured domain.
+- A Site can be live and verified on its provider hostname while custom-domain setup is still pending.
+- The live production URL is verified before becoming current.
+- A failed partial run resumes without rebuilding successful unrelated steps.
+- A failed run leaves the previous current Published Snapshot intact.
+- A known Content State lock survives regeneration.
+- Unexplained Framer divergence is surfaced instead of silently overwritten.
+- A Published Snapshot identifies the exact versions and Framer deployment that produced the live Site.
+
+---
+
+## Foundation rules
+
+1. **Rule & Form owns Site identity, canonical data, content state, rendering intent, and publication provenance; Framer is the current rendering and hosting provider.**
+2. **A Framer project is provider infrastructure and never replaces Rule & Form Site identity.**
+3. **Project allocation is explicit, atomic, and persisted; project names are not allocation authority.**
+4. **Once assigned, a Framer project remains attached to the Site until an explicit provisioning operation reassigns it.**
+5. **Every Publishing Run freezes its input versions before provider mutation begins.**
+6. **A Site has at most one active Publishing Run at a time.**
+7. **Publishing Mapping translates Rule & Form state into Framer state and is independently versioned.**
+8. **Project structure is validated before write; missing or incompatible mappings fail closed.**
+9. **Rule & Form-managed CMS updates send complete desired item state.**
+10. **Rule & Form writes only the Framer surfaces it explicitly owns.**
+11. **Assets and localized content remain traceable to Rule & Form source state.**
+12. **`publish()` is the beginning of deployment verification, not proof that production is correct.**
+13. **Production state advances only after the intended deployment is verified.**
+14. **Custom-domain readiness is capability state and does not gate Site publication.**
+15. **The publishing workflow assumes partial provider mutation is possible and recovers by convergence, not imaginary transaction rollback.**
+16. **Manual locks and overrides in Content State survive regeneration.**
+17. **Unexpected changes inside the managed Framer surface are divergence and are not silently overwritten.**
+18. **Every verified publication produces immutable provenance linking Rule & Form input versions to Framer output.**
+19. **Framer can change without redefining the Business Record, Content State, Site, or publishing contract.**
+
+Framer is where the Site is rendered. Rule & Form decides what gets rendered, why it gets rendered, and exactly which state produced what went live.
+
+**Resolve the state. Publish the output. Preserve the proof.**
+
+---
+
+## Next
+
+<Columns cols={2}>
+  <Card title="Workflow & Orchestration Engine" icon="workflow" href="/architecture/integrations-and-execution/workflow-and-orchestration-engine">
+    Durable execution behind every Publishing Run.
+  </Card>
+
+  <Card title="Sync, Projections & Reconciliation" icon="refresh-cw" href="/architecture/integrations-and-execution/sync-projections-and-reconciliation">
+    Detecting drift between Rule & Form and provider state.
+  </Card>
+</Columns>
