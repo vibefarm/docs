@@ -2,3 +2,1097 @@
 title: "Business Record"
 description: "The canonical, versioned representation of what Rule & Form is allowed to believe about a business, how those facts change, and how every downstream system consumes them safely."
 ---
+
+---
+
+## title: "Business Record"<br />description: "The canonical, versioned representation of what Rule & Form is allowed to believe about a business, how those facts change, and how every downstream system consumes them safely."
+
+The Business Record is what Rule & Form is allowed to believe about a business.
+
+It holds canonical business facts once, under stable identity, with enough history to know what changed and which version every downstream system used.
+
+```text
+Business
+    ↓
+Business Record
+    ↓
+Website
+Content
+Provisioning
+Provider configuration
+Business Hub
+Search structure
+Future systems
+```
+
+One business is represented once.
+
+## What belongs here
+
+The Business Record contains facts and durable business-level choices that should remain true regardless of which product surface or provider consumes them.
+
+Examples include:
+
+```text
+Identity
+Business name
+Legal name where required
+Business type
+Years / founding information
+
+Contact
+Phone
+Email
+Website
+Business address
+
+Services
+Offered services
+Custom services
+Service priorities
+Specialties
+Customer types
+
+Geography
+Service areas
+Locations
+
+Availability
+Business hours
+Emergency availability
+Relevant scheduling facts
+
+Proof
+Licenses
+Credentials
+Certifications
+Warranties
+Business attributes
+
+Commercial facts
+Offers
+Financing availability
+
+Languages
+Supported customer languages
+
+Assets
+Logo
+Team photos
+Project photos
+Vehicles
+Credentials
+
+Business-level preferences
+Relevant contact or operating preferences
+```
+
+This is a semantic boundary, not a requirement that every value live in one database row or JSON object.
+
+The physical schema can use structured payloads, related tables, or both where identity, constraints, querying, or lifecycle justify it.
+
+The authority does not change.
+
+## What does not belong here
+
+The Business Record is not a container for every piece of customer state.
+
+It does not own:
+
+```text
+Generated marketing copy
+Approved website wording
+Manual website overrides
+Page composition
+Design direction
+Template assignment
+
+Leads
+Customers
+Jobs
+Messages
+Calls
+Appointments
+
+Provider credentials
+Provider IDs
+Provider transport state
+
+Capability State
+Provisioning Runs
+Publishing Runs
+Published Snapshots
+
+Audit history
+System Events
+```
+
+Those objects may reference Business Record facts.
+
+They do not become Business Record facts themselves.
+
+```text
+Business Record
+    what is true
+
+Content State
+    what Rule & Form has approved to say
+
+Operational domain
+    what is happening
+
+Capability State
+    what currently works
+
+Published Snapshot
+    exactly what state produced a publication
+```
+
+**Do not make one object answer five different questions.**
+
+---
+
+## One logical record, versioned state
+
+Each Business has one logical Business Record.
+
+That record changes through immutable versions.
+
+```text
+Business
+    ↓
+Business Record
+    ├── Version 1
+    ├── Version 2
+    ├── Version 3
+    └── Version 4  ← current
+```
+
+The root establishes stable identity.
+
+The versions preserve state through time.
+
+Conceptually:
+
+```text
+Business Record
+
+id
+organization_id
+business_id
+current_version_id
+```
+
+```text
+Business Record Version
+
+id
+business_record_id
+
+version
+schema_version
+
+canonical state
+
+created_at
+created_by
+change context
+```
+
+The exact physical representation may differ.
+
+The invariants do not.
+
+### Historical versions do not change
+
+Once Version 12 exists, Version 12 remains the state Version 12 represented.
+
+A later correction creates Version 13.
+
+```text
+Version 12
+24/7 emergency = true
+
+correction
+        ↓
+
+Version 13
+24/7 emergency = false
+```
+
+Version 12 is not rewritten to make history cleaner.
+
+If a Site was published from Version 12, the Published Snapshot can still identify exactly what canonical state that publication used.
+
+### Current state is a pointer
+
+The current Business Record is the version referenced by `current_version_id`.
+
+```text
+Business Record
+    current_version_id
+          ↓
+    Version 18
+```
+
+Changing current state means creating a valid new version and advancing that pointer atomically.
+
+Historical consumers continue to reference the version they already pinned.
+
+---
+
+## Record version and schema version are different
+
+Two forms of versioning exist.
+
+```text
+Record version
+    revision of one Business's facts
+
+Schema version
+    structure and interpretation of Business Record data
+```
+
+Example:
+
+```text
+Johnson Plumbing
+
+Record Version 18
+Schema Version 3
+```
+
+Another Business may be:
+
+```text
+Smith Plumbing
+
+Record Version 6
+Schema Version 3
+```
+
+A schema migration does not mean the customer changed their business.
+
+A customer changing their hours does not mean the Business Record schema changed.
+
+**Never use one counter for both concepts.**
+
+---
+
+## Stable identity inside the record
+
+Canonical concepts use stable identity wherever Rule & Form already knows the domain.
+
+A known plumbing service is not stored only as visible text.
+
+```text
+service_id
+svc.plumbing.drain_cleaning
+```
+
+The display label can change later.
+
+The identity remains.
+
+```text
+svc.plumbing.drain_cleaning
+
+v1
+Drain Cleaning
+
+v2
+Drain & Clog Cleaning
+```
+
+The Business still offers the same canonical service.
+
+### Custom facts remain representable
+
+Reality will not always fit the current Vertical Blueprint.
+
+A custom service stays explicit.
+
+```text
+service_id
+null
+
+custom_label
+Backflow Testing & Certification
+```
+
+Do not force an outlier into the nearest canonical category merely to avoid a custom value.
+
+If the same custom concept appears repeatedly across businesses, it may become a candidate for a future Vertical Blueprint version.
+
+That is a taxonomy decision.
+
+It does not retroactively change historical business truth.
+
+### Array position is not identity
+
+Do not make meaning depend on:
+
+```text
+services[3]
+photos[0]
+locations[2]
+```
+
+where the item itself has durable meaning.
+
+Items that need to survive reordering, editing, comparison, or downstream mapping use stable identity.
+
+Ordering is stored separately when ordering itself has meaning.
+
+---
+
+## Offering and priority are different facts
+
+A Business may offer many services and actively prefer more work in only a few.
+
+```text
+Offered
+
+Drain Cleaning
+Water Heater Repair
+Repiping
+Sewer Repair
+Leak Detection
+Fixtures
+```
+
+```text
+Priority
+
+1. Sewer Repair
+2. Repiping
+3. Water Heater Replacement
+```
+
+Do not infer priority from whether a service is present.
+
+Do not infer it from arbitrary UI order.
+
+These facts may later influence different systems.
+
+```text
+offered service
+    ↓
+service eligibility
+
+priority
+    ↓
+website prominence
+future acquisition logic
+```
+
+The Business Record preserves the distinction.
+
+---
+
+## Unknown is not false
+
+Missing information must not silently become a negative claim.
+
+These states mean different things:
+
+```text
+financing = true
+    confirmed offered
+
+financing = false
+    confirmed not offered
+
+financing = unknown / absent
+    Rule & Form does not know yet
+```
+
+Likewise:
+
+```text
+24/7 emergency = false
+```
+
+is not equivalent to:
+
+```text
+24/7 emergency was never asked
+```
+
+This matters because downstream systems make decisions from the Business Record.
+
+**Absence of evidence is not a business fact.**
+
+Where the distinction matters, the schema preserves it explicitly.
+
+---
+
+## Valid does not mean complete
+
+A Business Record can exist before Rule & Form knows every optional fact about the Business.
+
+It cannot contain invalid or unconfirmed claims merely to appear complete.
+
+```text
+Known and confirmed
+    canonical
+
+Unknown
+    remains unknown
+
+Suggested
+    not canonical
+
+Contradictory
+    rejected or reviewed
+```
+
+Different systems require different subsets of the record.
+
+```text
+Website
+    requires one set of facts
+
+A2P registration
+    requires another
+
+Booking
+    requires another
+
+Google Business Profile
+    requires another
+```
+
+A capability determines whether the facts it needs are present.
+
+The Business Record does not have one global `complete = true` flag that pretends every consumer has identical requirements.
+
+This is what allows progressive provisioning.
+
+---
+
+## Authority
+
+Canonical state changes only through an authoritative Rule & Form write path.
+
+Possible actors include:
+
+```text
+Authorized customer
+Authorized Rule & Form staff
+Controlled system operation using already-authoritative state
+```
+
+AI is not an authoritative actor.
+
+A public website is not an authoritative actor.
+
+A directory listing is not an authoritative actor.
+
+A provider webhook is not an authoritative actor for canonical business facts.
+
+### Suggestions are not facts
+
+Structured Intake, imports, AI, and staff research may produce provisional information.
+
+```text
+Observed
+Suggested
+Imported
+        ↓
+review / confirmation
+        ↓
+Confirmed
+        ↓
+Business Record
+```
+
+Example:
+
+```text
+Existing website says
+"24-hour plumbing"
+
+        ↓
+
+Imported suggestion
+24/7 Emergency
+
+        ↓
+
+customer confirms
+        ↓
+
+canonical Business Record fact
+```
+
+Without the confirmation required by the field's authority rule, it remains provisional.
+
+### Providers do not silently rewrite business truth
+
+Suppose HighLevel contains a different business phone number from the Business Record.
+
+That disagreement does not make HighLevel correct.
+
+```text
+Business Record
+(325) 555-1000
+
+HighLevel
+(325) 555-2000
+
+        ↓
+
+drift / discrepancy
+```
+
+Provider state may trigger reconciliation or review.
+
+It does not silently take canonical ownership.
+
+**One field. One authority.**
+
+---
+
+## Provenance
+
+Rule & Form should be able to explain how a canonical fact entered the system.
+
+Useful provenance may include:
+
+```text
+source type
+source reference
+actor
+confirmation method
+timestamp
+change reason
+```
+
+Not every scalar field must physically carry a large provenance object.
+
+The implementation can attach provenance at the mutation, version, field, or related-record level where appropriate.
+
+The requirement is simpler:
+
+**For a material business claim, we should be able to determine why Rule & Form believes it.**
+
+Examples:
+
+```text
+Licensed
+    confirmed by customer during intake
+
+License number
+    supplied by customer
+
+Spanish service
+    confirmed during intake
+
+Business hours
+    changed by Rule & Form staff from customer request
+```
+
+This becomes particularly important for claims that affect public content, provider registration, or customer expectations.
+
+---
+
+## The write path
+
+Every canonical mutation follows the same conceptual path.
+
+```text
+proposed change
+      ↓
+resolve tenant + Business
+      ↓
+authorize actor
+      ↓
+validate input
+      ↓
+load current version
+      ↓
+apply intended change
+      ↓
+run domain validation
+      ↓
+create new version
+      ↓
+advance current pointer
+      ↓
+record change / emit required event
+      ↓
+commit
+```
+
+Downstream work begins only after the canonical change exists durably.
+
+### No direct provider mutation
+
+Avoid:
+
+```text
+intake service selected
+        ↓
+write Framer CMS
+```
+
+Avoid:
+
+```text
+staff edits HighLevel
+        ↓
+Business Record silently changes
+```
+
+Prefer:
+
+```text
+authorized business change
+        ↓
+Business Record Version 19
+        ↓
+downstream systems react
+```
+
+The Business Record is the handoff between understanding the business and operating systems that serve it.
+
+---
+
+## Concurrency
+
+Two edits can begin from the same current version.
+
+They must not silently overwrite each other.
+
+```text
+Editor A
+loads Version 18
+
+Editor B
+loads Version 18
+
+Editor A
+commits Version 19
+
+Editor B
+tries to commit from Version 18
+```
+
+The second write detects that its base is stale.
+
+It must reload, reconcile, or explicitly merge the intended change.
+
+It does not blindly replace Version 19.
+
+The exact implementation may use optimistic concurrency, version checks, or equivalent transaction controls.
+
+The invariant is:
+
+**A later write must not erase an intervening canonical change without knowing that change occurred.**
+
+---
+
+## Validation
+
+A proposed Business Record version must pass validation before becoming current.
+
+Validation occurs at several levels.
+
+### Schema validation
+
+The record conforms to the Business Record schema version.
+
+Examples:
+
+```text
+valid field shape
+valid canonical identifier
+valid structured address
+valid contact representation
+valid collection shape
+```
+
+### Field validation
+
+Individual values are structurally valid.
+
+Examples:
+
+```text
+phone
+email
+URL
+date
+numeric value
+supported asset reference
+```
+
+### Relationship validation
+
+Related facts do not contradict the model.
+
+Examples:
+
+```text
+priority service
+    must also be offered
+
+custom service
+    must not pretend to have a canonical service ID
+
+asset reference
+    must resolve to a valid Rule & Form Asset
+```
+
+### Business-rule validation
+
+Some combinations require product rules.
+
+Examples:
+
+```text
+24/7 Emergency
+    may require an appropriate contact path
+
+Spanish enabled
+    may introduce downstream localization requirements
+```
+
+The common rule set belongs to **Validation & Business Rules**.
+
+The Business Record write path invokes it.
+
+The UI does not become a second authority for the same rule.
+
+---
+
+## Change semantics
+
+A new version represents a meaningful change in canonical state.
+
+Examples:
+
+```text
+service added
+service removed
+phone changed
+hours changed
+credential confirmed
+service area added
+offer ended
+language added
+priority reordered
+```
+
+A request that produces no semantic change does not need to manufacture history merely because a save button was clicked.
+
+### Removing a fact preserves history
+
+Suppose Version 14 includes Sewer Repair.
+
+Version 15 removes it.
+
+```text
+Version 14
+Sewer Repair offered
+
+Version 15
+Sewer Repair absent / no longer offered
+```
+
+Historical Version 14 remains recoverable.
+
+Removal changes current truth.
+
+It does not erase prior truth.
+
+---
+
+## Downstream consumption
+
+Ordinary application reads may use the current Business Record Version.
+
+Long-running or reproducible operations pin a specific version.
+
+```text
+current product view
+        ↓
+current Business Record Version
+```
+
+```text
+Publishing Run
+        ↓
+Business Record Version 18
+        ↓
+same version for entire run
+```
+
+A Publishing Run does not begin on Version 18 and silently finish using Version 19 because the customer edited their hours halfway through.
+
+The new canonical state can drive the next run.
+
+### Content State
+
+The Business Record supplies facts.
+
+Content State owns approved expression.
+
+```text
+Business Record
+
+family_owned = true
+founded_year = 2012
+
+        ↓
+
+Content State
+
+"Family-owned plumbing serving Abilene since 2012."
+```
+
+Editing that sentence does not alter `family_owned` or `founded_year`.
+
+Changing `founded_year` does not give downstream generation permission to overwrite a locked approved sentence.
+
+The two systems have different authority.
+
+### Website and CMS
+
+The Website Engine and CMS Content Model derive website state from a pinned Business Record Version plus approved Content State.
+
+They do not become alternative business databases.
+
+### Providers
+
+Providers receive only the Business Record facts required for their role.
+
+```text
+Business Record
+      ↓
+explicit projection
+      ↓
+provider configuration
+```
+
+Do not mirror the entire Business Record into HighLevel, Framer, or another vendor because it is convenient.
+
+A projection is not another source of truth.
+
+---
+
+## Schema evolution
+
+The Business Record schema will improve as Rule & Form learns more about Plumbing and later verticals.
+
+A schema change must preserve interpretability of historical versions.
+
+```text
+Schema v1
+    ↓
+Schema v2
+    ↓
+Schema v3
+```
+
+Possible changes include:
+
+```text
+new optional field
+new canonical category
+stronger validation
+new structured representation
+deprecated field
+new relationship
+```
+
+Schema evolution does not rewrite historical meaning silently.
+
+If old state needs migration, that migration is explicit and reproducible.
+
+A Published Snapshot that references an older Business Record Version must remain explainable after the current schema advances.
+
+---
+
+## Workbench
+
+Workbench should make canonical state inspectable without exposing raw database structure.
+
+For a Business Record Version:
+
+```text
+BUSINESS RECORD
+
+Business
+Johnson Plumbing
+
+Current version
+18
+
+Schema
+3
+
+Changed
+Aug 11, 2026
+
+Changed by
+Customer
+
+Changes
++ Sewer Repair
+- Commercial Plumbing
+Business hours updated
+```
+
+For a material field:
+
+```text
+24/7 Emergency
+
+VALUE
+No
+
+SOURCE
+Structured Intake
+
+CONFIRMED BY
+Customer
+
+VERSION
+18
+
+DOWNSTREAM
+Website
+Capability rules
+Provider configuration where required
+```
+
+Workbench should make it possible to answer:
+
+```text
+What does Rule & Form currently believe?
+
+What changed?
+
+Who or what established that fact?
+
+Which version did this publication use?
+
+Which downstream systems consume it?
+```
+
+That is the operational value of canonical state.
+
+---
+
+## V1 boundary
+
+V1 implements the Business Record deeply enough to represent one real Plumbing business and drive the complete product loop. V1 scope
+
+### Required
+
+V1 requires:
+
+- one logical Business Record per Business
+- immutable Business Record Versions
+- independent schema version
+- atomic current-version pointer
+- tenant ownership through Organization and Business
+- one authorized write path
+- stable canonical IDs for known Plumbing concepts
+- preserved custom values for legitimate exceptions
+- explicit offered-versus-priority distinction
+- correct unknown-versus-false semantics where required
+- identity and contact facts
+- Plumbing services and specialties required by the product
+- service areas and locations required by the product
+- hours and availability required by the product
+- credentials and proof required by the first Site
+- offers and financing facts required by the first Site
+- language facts required for English and Spanish output
+- Rule & Form Asset references required by the first Site
+- validation before a version becomes current
+- concurrency protection
+- enough provenance to explain material canonical claims
+- current-version reads
+- pinned-version reads for publishing and other reproducible work
+- change history visible in Workbench
+- deterministic demo fixture using the same model
+
+### Deferred
+
+V1 does not require:
+
+- every possible Plumbing fact
+- every future trade schema
+- arbitrary customer-defined fields
+- AI-created canonical business facts
+- autonomous taxonomy expansion
+- a universal ontology for every local business
+- perfect historical field-level provenance for every trivial value
+- storing every Business Record field as a relational column
+- storing the entire record in one document
+- general-purpose schema editing UI
+- provider-specific fields in the canonical model merely because one provider exposes them
+
+**Model the business we need to serve now without making the first schema the last schema.**
+
+---
+
+## Acceptance conditions
+
+The Business Record is working when:
+
+- A Business has one logical Business Record with identifiable immutable versions.
+- A canonical change creates a new version rather than rewriting historical state.
+- Record version and schema version remain independent.
+- A Publishing Run can pin one Business Record Version and use it for the entire run.
+- A historical Published Snapshot can still resolve the Business Record Version it used.
+- A known Plumbing service is represented by stable canonical identity rather than visible wording alone.
+- A legitimate custom service can remain custom without false normalization.
+- A service can be offered without being prioritized.
+- Unknown information cannot silently become `false`.
+- AI or imported information cannot become canonical merely because it looks plausible.
+- A provider webhook cannot silently overwrite a canonical business fact.
+- Two concurrent edits cannot unknowingly erase one another.
+- Invalid state cannot become the current Business Record Version.
+- Removing a service changes current truth without erasing the historical version that contained it.
+- Changing approved website copy does not change canonical business facts.
+- Changing a canonical business fact does not directly mutate Framer or HighLevel.
+- Downstream systems can consume current state without maintaining competing copies of the same fact.
+- Workbench can explain a material fact, the version containing it, and how it entered canonical state.
+- Demo and production use the same Business Record model.
+
+---
+
+## Foundation rules
+
+1. **The Business Record is the canonical source for facts about a Business.**
+2. **One Business has one logical Business Record.**
+3. **Canonical changes create immutable Business Record Versions.**
+4. **Record version and schema version are different concepts.**
+5. **Historical versions are never rewritten to make current state cleaner.**
+6. **Known domain concepts use stable canonical identity.**
+7. **Legitimate exceptions remain representable without false normalization.**
+8. **Offering something and prioritizing it are separate facts.**
+9. **Unknown is not false.**
+10. **Valid state does not imply every possible field is complete.**
+11. **Canonical state enters through one authorized write path.**
+12. **AI, imports, public sources, and provider state do not silently create canonical business facts.**
+13. **Every canonical field has one authority.**
+14. **Material canonical claims retain enough provenance to explain why Rule & Form believes them.**
+15. **Concurrent writes cannot silently erase intervening canonical changes.**
+16. **A proposed version must pass schema and domain validation before becoming current.**
+17. **Removing current truth does not erase historical truth.**
+18. **Content State owns approved expression, not the Business Record.**
+19. **Operational activity does not belong in the Business Record.**
+20. **Provider IDs, credentials, and runtime state do not belong in the Business Record.**
+21. **Provider projections consume canonical state. They do not become competing truth.**
+22. **Long-running reproducible work pins a specific Business Record Version.**
+23. **Schema evolution preserves the interpretability of historical state.**
+24. **The same Business Record model serves demo and production.**
+
+Everything downstream gets easier when the business itself is settled first.
+
+**Represent it once. Version the truth. Make everything else consume it.**
