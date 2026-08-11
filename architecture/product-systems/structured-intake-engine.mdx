@@ -1,3 +1,592 @@
 ---
 title: "Structured Intake Engine"
+description: "How Rule & Form resolves a business against a maintained Vertical Blueprint, captures canonical facts with minimal customer effort, and turns guided input into validated Business Record state."
 ---
+
+Structured Intake turns an unfamiliar business into structured Rule & Form state.
+
+It does not ask the customer to design a website, write marketing copy, or explain a trade Rule & Form already understands. It begins from a maintained Vertical Blueprint, asks the business where it matches or differs, captures exact facts and exceptions, and produces validated input for the Business Record.
+
+optional context ↓ AI suggestions ↓ human confirmation ↓ Structured Intake
+
+The engine is reusable across trades.
+
+The blueprint is what makes it know plumbing.
+
+ENGINE
+
+progression validation conditional logic save / resume selection ordering uploads review custom answers AI-assisted suggestions
+
+VERTICAL BLUEPRINT
+
+services customer types specialties proof availability offers terminology relationships category rules
+
+↓
+
+BUSINESS-SPECIFIC STATE
+
+Do not encode plumbing behavior inside plumbing-specific React components.
+
+The application renders a reusable intake system from versioned category configuration and shared field definitions.
+
+The core rule
+
+The system should already know the category. The business should only have to tell us where it differs.
+
+For a supported vertical, intake begins from an existing model of the category.
+
+A plumbing company does not receive a blank field asking:
+
+What services do you offer?
+
+It receives the relevant plumbing service model:
+
+\[ Drain Cleaning \] \[ Water Heater Repair \] \[ Water Heater Installation \] \[ Tankless Water Heaters \] \[ Sewer Repair \] \[ Sewer Replacement \] \[ Leak Detection \] \[ Repiping \] \[ Fixtures \] \[ Commercial Plumbing \]
+
+\[ \+ Something else \]
+
+The customer recognizes the business instead of composing it.
+
+This principle applies beyond services:
+
+Services Customer types Specialties Availability Proof Credentials Offers Financing Languages Service areas Contact preferences Operational preferences Existing software
+
+Freeform input remains available where the model cannot represent reality.
+
+It is the escape hatch, not the default interface.
+
+Vertical Blueprints
+
+A supported trade resolves to a specific Vertical Blueprint version.
+
+vertical plumbing
+
+blueprint plumbing.v1
+
+The blueprint defines the category-specific choices and relationships the intake engine needs.
+
+At minimum, a selectable blueprint entry has:
+
+canonical ID display label category aliases active state sort / grouping information optional clarification conditional relationships
+
+For example:
+
+ID svc.plumbing.drain\_cleaning
+
+Label Drain Cleaning
+
+Category service
+
+Aliases Drain Service Clogged Drains Drain Clearing
+
+The canonical ID is durable.
+
+The label may improve later without changing the meaning of existing customer state.
+
+svc.plumbing.drain\_cleaning ↓ "Drain Cleaning"
+
+later
+
+svc.plumbing.drain\_cleaning ↓ "Drain & Clog Cleaning"
+
+The business remains attached to the same concept.
+
+Two plumbing companies may initially see almost the same service catalog.
+
+That is expected.
+
+Plumbing Blueprint v1 ↓ Company A Company B Company C Company D
+
+Personalization may change:
+
+suggested selections initial ordering which conditional questions become relevant which sections receive more emphasis which optional questions can be skipped
+
+It does not create a new plumbing ontology for every customer.
+
+Personalization resolves the business against the model. It does not reinvent the model.
+
+Question model
+
+Intake questions have stable identity and explicit behavior.
+
+A question definition should be able to describe:
+
+question ID target field or concept input type label supporting text requiredness available choices applicability conditions validation rules ordering review behavior
+
+Question identity does not come from the visible wording.
+
+question ID intake.services.offered
+
+visible label v1 Which services do you offer?
+
+visible label v2 What kind of work do you handle?
+
+Changing copy must not invalidate saved intake state.
+
+Input types
+
+Use the narrowest interaction that accurately captures the answer.
+
+Input	Use Multi-select	Services, specialties, customer types Single-select	One bounded choice Boolean / toggle	Explicit yes or no Ordered selection	Priorities or preferred services Text	Exact short facts Number	Years, counts, quantities Address / geography	Locations and service areas Date / time	Relevant exact scheduling facts Upload	Logos, photos, credentials, assets Freeform	Genuine exceptions or business identity
+
+Do not turn every fact into a chip merely because chips are visually convenient.
+
+bounded domain → selection
+
+exact fact → structured field
+
+exception / identity → freeform Selection is factual input, not content approval
+
+Selecting a service establishes that the service applies to the business.
+
+It does not approve a marketing paragraph.
+
+\[✓ Water Heater Repair\]
+
+means
+
+Business offers Water Heater Repair
+
+It does not mean:
+
+Customer approved this generated Water Heater Repair description
+
+Finished marketing copy normally stays out of the intake flow.
+
+A choice may contain a short clarification when the category term itself could be misunderstood:
+
+\[ Trenchless Sewer Repair \]
+
+Repair or replace underground sewer lines without a traditional full-length excavation.
+
+That text explains the choice.
+
+It is not the website copy.
+
+The separation is deliberate:
+
+INTAKE What is true?
+
+↓
+
+BUSINESS RECORD What applies to this business?
+
+↓
+
+CONTENT STATE How should Rule & Form express it?
+
+↓
+
+PUBLISHED OUTPUT What should the customer see?
+
+The contractor is authoritative about the business.
+
+Rule & Form is responsible for presenting the business well.
+
+Conditional progression
+
+Intake is conditional.
+
+Questions appear because preceding normalized answers make them relevant.
+
+Water Heater Services ↓ selected
+
+Which do you handle?
+
+\[ Tank \] \[ Tankless \]
+
+↓ tankless selected
+
+Do you install new tankless systems?
+
+A company that never selected water-heater work never sees the follow-up questions.
+
+Conditional logic reduces customer effort without reducing the detail of the final record.
+
+Conditions use structured state
+
+Conditions evaluate normalized answers and canonical IDs.
+
+Prefer:
+
+if services contains svc.plumbing.water\_heater
+
+Avoid:
+
+if button label == "Water Heaters"
+
+and avoid UI-component state becoming business logic.
+
+Hidden questions are not secretly required
+
+A question that does not apply to the current business cannot block completion.
+
+Requiredness is evaluated after applicability.
+
+applicable? ↓ yes required? ↓ yes answered?
+
+This prevents conditional branches from creating invisible validation failures.
+
+Conditions must remain understandable
+
+V1 does not require a generic rules language capable of expressing arbitrary programs.
+
+Use the smallest declarative condition model required by the real intake.
+
+Examples:
+
+selected not selected equals not equals contains has value missing value
+
+Add complexity only when real vertical behavior requires it.
+
+Priority is different from availability
+
+What a company offers and what it wants to emphasize are separate facts.
+
+A plumber may offer twenty services but want most new work in three.
+
+OFFERS
+
+Drain Cleaning Water Heater Repair Repiping Sewer Repair Leak Detection Fixtures Commercial Plumbing ...
+
+PRIORITY
+
+1. Water Heater Replacement
+2. Sewer Repair
+3. Repiping
+
+Do not infer priority merely from selection order unless the UI explicitly tells the user that order has meaning.
+
+The Business Record must be able to distinguish:
+
+we do this
+
+from
+
+we want more of this
+
+That difference can later influence homepage hierarchy, service prominence, lead treatment, and campaign strategy without misrepresenting what the business offers.
+
+AI-assisted resolution
+
+AI may help resolve messy business language against the known blueprint.
+
+It does not become the authority for business facts.
+
+A business may optionally write:
+
+"We're a family-owned residential plumbing company. Most of our work is drains, water heaters and sewer. We answer calls in the evenings but don't really operate as a 24/7 emergency company."
+
+The system may suggest:
+
+Suggested
+
+\[✓ Residential\] \[✓ Drain Cleaning\] \[✓ Water Heater Services\] \[✓ Sewer Work\] \[✓ Family Owned\] \[✓ Evening Availability\]
+
+Not suggested
+
+\[  Commercial\] \[  24/7 Emergency\]
+
+These are suggestions.
+
+They become business facts only after confirmation.
+
+freeform context ↓ AI classification ↓ suggested canonical IDs ↓ customer / staff confirms ↓ intake answer ↓ Business Record AI may not create unverified claims
+
+AI cannot silently infer facts such as:
+
+Licensed Insured 24/7 Emergency Financing Available 40 Years in Business Same-Day Service Background-Checked Technicians Warranty
+
+from tone, category norms, website language, or probability.
+
+If a claim requires confirmation, it remains unconfirmed until an authoritative actor confirms it.
+
+AI operates against the blueprint
+
+Prefer:
+
+Resolve this description against these known plumbing concepts.
+
+over:
+
+Invent the services this company probably provides.
+
+This keeps AI useful where ambiguity exists without turning generation into category authority.
+
+AI handles uncertainty. The product handles what is already known.
+
+Imported information
+
+Existing public information may accelerate intake.
+
+Potential sources include:
+
+existing website Google Business Profile structured business data uploaded documents staff-entered information
+
+Imported information is not automatically trusted merely because it was found publicly.
+
+The engine distinguishes:
+
+observed suggested confirmed
+
+For example:
+
+Existing site mentions: "24-hour plumbing"
+
+↓
+
+Imported suggestion: 24/7 Emergency
+
+↓
+
+Customer confirmation required
+
+↓
+
+confirmed fact
+
+This prevents stale websites, directory errors, old offers, and AI extraction mistakes from silently becoming canonical business truth.
+
+Custom answers and outliers
+
+The blueprint will not represent every real business.
+
+A known selection uses the canonical ID.
+
+service\_id svc.plumbing.drain\_cleaning
+
+custom\_label null
+
+An unrecognized service preserves exactly what the business supplied:
+
+service\_id null
+
+custom\_label Backflow Testing & Certification
+
+Do not force an unusual answer into the nearest known category simply to keep the data clean.
+
+The unresolved answer remains visible to Rule & Form.
+
+custom answer ↓ preserved as entered ↓ review ↓
+
+one-off → remains custom
+
+recurring pattern → candidate blueprint addition
+
+This is how exceptions become product knowledge without corrupting the taxonomy.
+
+Unsupported verticals
+
+V1 does not need to autonomously create a new Vertical Blueprint because someone selects Not listed.
+
+An unsupported vertical can preserve the requested category and route it to a controlled fallback or review path.
+
+Trade
+
+\[ Plumbing \] \[ HVAC \] \[ Roofing \] \[ Electrical \] \[ Remodeling \] \[ Not listed \]
+
+Not listed means:
+
+Rule & Form does not yet have a trusted category model for this business.
+
+It must not mean:
+
+Ask AI to invent one and pretend it is equivalent.
+
+How unsupported verticals become new supported Blueprints is a separate product process.
+
+Intake Session
+
+An Intake Session represents work in progress.
+
+It is not itself the Business Record.
+
+Organization ↓ Business ↓ Intake Session ↓ answers suggestions uploads progress review state
+
+The session preserves enough information to:
+
+save and resume render the correct next question retain confirmed selections retain custom answers distinguish suggestions from answers restore uploaded assets reconstruct review state audit how a canonical value entered the system where required Session identity
+
+An Intake Session belongs explicitly to:
+
+Organization Business Vertical Blueprint version
+
+Tenant context is never inferred from the session ID alone.
+
+Accounts, Tenancy & Identity owns the tenant boundary.
+
+Save and resume
+
+Every meaningful user action should survive navigation or browser interruption without requiring the customer to restart the flow.
+
+answer question ↓ persist ↓ update applicable progression ↓ continue
+
+Save and resume must not require one giant form submission at the end.
+
+The user may safely leave after any persisted step and return to the same business context.
+
+Blueprint version remains known
+
+A session records the blueprint version it began against.
+
+If the current Plumbing Blueprint changes while someone has an unfinished intake, the system does not silently reinterpret existing answers against a different model.
+
+Intake Session Plumbing Blueprint v1.2
+
+current system blueprint Plumbing Blueprint v1.3
+
+Migration to a newer blueprint is an explicit operation when required.
+
+Review and commit
+
+Work-in-progress intake state and canonical business truth are separate concerns.
+
+The session may contain:
+
+unfinished answers AI suggestions unconfirmed imports custom values invalid values uploads awaiting review
+
+Those must not silently become authoritative Business Record state.
+
+Before canonical commit, the engine resolves:
+
+applicability required fields field validation cross-field validation unconfirmed suggestions blocking custom cases
+
+The resulting operation is a deliberate Business Record change.
+
+Intake Session ↓ validated confirmed answers ↓ Business Record write path ↓ new canonical state
+
+The Business Record page owns its versioning mechanics and mutation rules.
+
+The intake engine does not create a competing source of truth.
+
+Existing businesses
+
+Structured Intake is not only an onboarding mechanism.
+
+The same controlled input patterns may later be used to edit existing business facts.
+
+Current Business Record ↓ hydrate relevant intake state ↓ customer / staff changes facts ↓ validate ↓ commit ↓ new Business Record version
+
+Changing the business does not require returning to an unstructured support conversation.
+
+That does not mean every future change must expose the full onboarding flow. Narrow edit surfaces may reuse the same field definitions and validation rules.
+
+Validation
+
+Validation exists at multiple levels.
+
+Field validation
+
+Examples:
+
+phone format URL format required value numeric range valid email supported upload type Category validation
+
+Examples:
+
+Tankless installation selected but Water Heater Services absent
+
+24/7 Emergency selected but no emergency contact path
+
+Spanish selected but localization configuration incomplete
+
+The engine may flag contradictions before commit.
+
+Business-rule validation
+
+Some rules depend on product policy rather than form mechanics.
+
+Those rules belong to Validation & Business Rules.
+
+The intake engine invokes them.
+
+It does not create a second copy of the same rule inside the UI.
+
+UI constraint → basic interaction validity
+
+domain validation → business truth validity Uploads and media
+
+Intake may collect:
+
+logo team photography project photography vehicle photography licenses certifications brand assets existing collateral
+
+The intake answer stores references to managed Rule & Form assets.
+
+It does not make a temporary browser upload URL part of canonical business state.
+
+upload ↓ managed asset ↓ asset identity ↓ confirmed Business Record reference
+
+File validation, storage policy, transformation, and asset lifecycle belong to the relevant storage and content infrastructure.
+
+Intake does not generate the website
+
+Structured Intake terminates at structured business state.
+
+It may trigger downstream work once enough state exists, but it does not own website generation.
+
+Structured Intake ↓ Business Record
+
+Business Record ↓ Content State ↓ Website Engine ↓ Framer Publishing
+
+This boundary is important.
+
+Do not create:
+
+on service chip click immediately write Framer CMS
+
+or:
+
+intake component directly generates homepage paragraph
+
+Selections become durable business facts first.
+
+Downstream systems decide how those facts affect their own outputs.
+
+One service choice may later influence many systems because those systems read the same canonical state.
+
+Drain Cleaning selected ↓ Business Record ↓ Website Engine Search structure Lead categorization Business Hub future automation
+
+The intake engine does not coordinate each consequence itself.
+
+Instrumentation
+
+Structured Intake is part of the economic model, so its performance must be measurable.
+
+At minimum, the system should eventually support measurement of:
+
+time to complete completion rate abandonment point time per step custom-answer rate AI suggestion acceptance rate import confirmation rate validation failure rate human-review minutes number of post-intake corrections
+
+The purpose is not product analytics for its own sake.
+
+These measurements answer whether Rule & Form is actually reducing repeated human work.
+
+More customers ↓ better Vertical Blueprint ↓ fewer ambiguous answers ↓ less manual interpretation ↓ faster intake ↓ lower fulfillment cost
+
+Instrumentation & Work Logging owns the common event and work-measurement model.
+
+V1 scope
+
+V1 proves the engine with one deeply modeled vertical. <Badge color="blue" size="sm" stroke>V1 scope</Badge>
+
+Plumbing Blueprint ↓ Structured Intake Engine ↓ Demo Plumbing Business ↓ Business Record ↓ Website \+ Business Hub systems
+
+V1 requires:
+
+one production-quality Plumbing Blueprint stable canonical IDs for known choices multi-select and single-select questions exact structured fields controlled freeform input conditional questions priority selection where required save and resume uploads required by the demo validation review custom-answer preservation Business Record commit demo-data fill for deterministic testing enough provenance to distinguish confirmed input from suggestions or imports
+
+AI-assisted preselection is valuable for the demo, but the engine must remain functional without it.
+
+V1 does not require:
+
+autonomous creation of unsupported Vertical Blueprints an arbitrary no-code form builder a general-purpose rules language AI-generated canonical options dynamic ontology generation per customer hundreds of possible question types perfect coverage of every plumbing edge case every future trade before Plumbing proves the engine publishing directly from unfinished intake state
+
+Plumbing proves the engine. New trades extend the model, not the onboarding application.
+
+Acceptance conditions
+
+The Structured Intake Engine is working when:
+
+A user can choose Plumbing and receive the Plumbing Blueprint without plumbing-specific page code. Known services resolve to stable canonical IDs. Changing a display label does not change the identity of previously stored selections. Two plumbing companies can use the same blueprint while producing different business state. An optional company description can suggest known blueprint selections without confirming them automatically. No AI suggestion becomes a business fact without confirmation. Selecting Water Heater Services can reveal relevant follow-up questions. A hidden conditional question cannot block completion. A customer can add a legitimate service not represented by the current blueprint. Custom answers remain distinguishable from canonical entries. A saved session can be resumed without losing selections, custom input, or progress. An unfinished Intake Session is not treated as canonical Business Record truth. Confirmed intake can create or update Business Record state through one authoritative write path. A service selection does not directly mutate Framer, HighLevel, or another provider. Marketing copy does not need to be approved during factual service selection. Exact business facts remain structured fields rather than being buried inside prose. Unsupported verticals remain explicit instead of silently receiving an AI-invented category model. The demo can be reset to a deterministic Plumbing intake fixture. Intake performance can be measured without exposing customer data across tenants. Foundation rules The engine owns intake behavior. The Vertical Blueprint owns category knowledge. The system begins from what Rule & Form already knows about the category. The business supplies truth, differences, exact facts, exceptions, and identity. Known concepts use stable canonical IDs. Display labels are not identity. The same Vertical Blueprint is intentionally reused across businesses in that vertical. Personalization may suggest or prioritize known choices; it does not create a new ontology for each customer. Structured input is preferred when the domain is bounded. Exact facts use explicit fields. Freeform input handles genuine exceptions. Conditional questions are driven by normalized state, not UI labels or component state. Questions that do not apply cannot secretly remain required. Offering a service and prioritizing a service are separate facts. AI may interpret, classify, and suggest. It does not silently create canonical business facts. Imported information is provisional until its required authority has confirmed it. Custom answers are preserved rather than forced into incorrect canonical categories. Repeated custom answers are candidates for future Blueprint knowledge. Intake Session state and Business Record truth are separate concepts. The Business Record is changed through one authoritative write path. Intake captures truth. Content State owns approved expression. Intake does not write directly to provider systems. A new trade extends the category model before it extends the engine.
+
+The interface can become simpler as the model becomes richer.
+
+Know the category. Ask for the difference. Preserve the truth.
