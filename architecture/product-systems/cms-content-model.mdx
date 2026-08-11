@@ -1,3 +1,846 @@
 ---
 title: "CMS Content Model"
+description: "How Rule & Form represents reusable website content as typed, provider-independent records between approved Content State, the Website Engine, and provider-specific publishing."
 ---
+
+The CMS Content Model defines the structured content Rule & Form can place into websites.
+
+It is not the Business Record.
+
+It is not Content State.
+
+It is not the Framer CMS schema.
+
+It is the provider-independent content contract between Rule & Form's approved website expression and the systems that publish it.
+
+Content State Version ↓ approved expression
+
+↓
+
+CMS Content Model ↓ typed reusable content records
+
+Website Engine ↓ pages, sections, bindings, ordering
+
+↓
+
+Publishing Mapping ↓
+
+Framer CMS / localization
+
+The Website Engine answers:
+
+What should this Site contain, and where should it appear?
+
+The CMS Content Model answers:
+
+What structured content does that website have available to place there?
+
+Those are different responsibilities.
+
+This is not another source of truth
+
+The CMS Content Model is derived from authoritative Rule & Form state.
+
+Business Record \+ Content State ↓ content projection ↓ CMS Content Model
+
+Do not create a second editable version of the same business or content facts merely because publishing needs a convenient structure.
+
+For example:
+
+Business Record
+
+service\_id: svc.plumbing.drain\_cleaning
+
+offered: true
+
+and:
+
+Content State
+
+service headline: Drain Cleaning Without the Runaround
+
+service summary: approved customer-facing expression
+
+may resolve into:
+
+Service Content
+
+service: svc.plumbing.drain\_cleaning
+
+headline: Drain Cleaning Without the Runaround
+
+summary: approved expression
+
+The Service Content record is not independently authoritative.
+
+If the service fact changes, change the Business Record.
+
+If the approved wording changes, change Content State.
+
+Then resolve the content model again.
+
+Do not fix canonical state by hand-editing its publishing projection.
+
+This is not a customer-facing CMS
+
+Rule & Form is a managed product.
+
+The CMS Content Model does not imply that contractors receive a generic CMS where they manipulate database-like content records.
+
+Customer-facing changes should occur through intentional Rule & Form surfaces such as:
+
+Business information Services Service areas Photos Offers Website change requests approved editable content
+
+Those surfaces update the domain object that actually owns the information.
+
+Business fact edit ↓ Business Record
+
+approved wording edit ↓ Content State
+
+website composition change ↓ Site / Website configuration
+
+The CMS Content Model exists because publishing needs structure.
+
+It is not the product's editing model.
+
+Provider-independent identity
+
+Every reusable content record has Rule & Form identity.
+
+Conceptually:
+
+Content Entity
+
+id type site\_id where scoped source identity where applicable schema version fields localized fields asset references
+
+The exact persistence representation may differ.
+
+The invariant is that Rule & Form content can be identified without knowing anything about Framer.
+
+Provider IDs stay outside
+
+Avoid:
+
+service\_content
+
+framer\_collection\_id framer\_item\_id framer\_field\_id
+
+as content identity.
+
+Prefer:
+
+content\_id: cnt\_service\_01
+
+service\_id: svc.plumbing.drain\_cleaning
+
+Then:
+
+Rule & Form content identity ↓ Publishing Mapping / Provider Mapping ↓ Framer item identity
+
+Framer IDs belong to provider state.
+
+They do not define what the content means.
+
+Content type is explicit
+
+Content records use known typed shapes.
+
+V1 content families may include:
+
+Content type	Purpose Business Profile Content	Reusable approved business-facing identity and summaries Service Content	Structured expression for a canonical or custom offered service Location Content	Structured expression associated with an eligible service geography FAQ Content	Reusable question and approved answer Offer Content	Approved promotional content and its factual terms Project Content	Approved project or portfolio material where the Site requires it Proof Content	Credentials, warranties, business attributes, or other approved proof presentation where appropriate
+
+V1 implements only the types required by the first Plumbing Site.
+
+The model should not create dozens of speculative content types before a real website requires them.
+
+Type is not Framer collection
+
+Conceptually:
+
+Rule & Form
+
+Service Content
+
+may currently publish to:
+
+Framer
+
+Services collection
+
+That does not mean those concepts are identical.
+
+A future template could publish Service Content differently.
+
+A future provider could use an entirely different CMS model.
+
+The Rule & Form content contract remains stable.
+
+Service Content
+
+Services are a central V1 content type.
+
+A Service Content record binds approved expression to stable service identity.
+
+Conceptually:
+
+Service Content
+
+content\_id service\_id or custom service identity
+
+display name headline short summary long-form content where required supporting proof references FAQ references asset references
+
+localized expression
+
+The Business Record still owns whether the Business offers the service.
+
+Business Record
+
+offers: svc.plumbing.drain\_cleaning
+
+The CMS Content Model does not establish that fact.
+
+Known service identity remains canonical service\_id: svc.plumbing.water\_heater\_repair
+
+is preferable to:
+
+service: Water Heater Repair
+
+as the relationship.
+
+Visible wording can change.
+
+The service identity remains stable.
+
+Custom services remain possible
+
+A legitimate custom service that does not yet exist in the Vertical Blueprint must still be representable.
+
+The content record may reference the Business Record's custom service identity rather than inventing an incorrect canonical service.
+
+custom business service ↓ approved Content State ↓ Service Content
+
+A recurring custom service can later become a Vertical Blueprint candidate without rewriting historical content identity silently.
+
+Business Profile Content
+
+Some approved content describes the Business rather than one service.
+
+Examples include:
+
+short company summary about summary business story approved differentiators approved proof summary service-area summary general CTA support copy
+
+Do not confuse this with the Business Record.
+
+Business Record
+
+founded\_year = 2012 family\_owned = true
+
+may support:
+
+Business Profile Content
+
+"Family-owned plumbing serving Abilene since 2012."
+
+The first is fact.
+
+The second is expression.
+
+That distinction remains intact even when both eventually appear in the same website section.
+
+FAQ Content
+
+FAQs are structured content, not arbitrary blobs appended to pages.
+
+Conceptually:
+
+FAQ Content
+
+content\_id
+
+question answer
+
+topic service references location references where relevant eligibility metadata
+
+localized expression
+
+A FAQ may be reusable across more than one page.
+
+FAQ How quickly can you respond?
+
+↓ Homepage Drain Cleaning page Emergency service page
+
+The Website Engine decides where the FAQ is eligible to appear.
+
+The CMS Content Model owns the structured FAQ itself.
+
+FAQ presence does not mean schema eligibility
+
+The existence of FAQ content does not automatically mean a page should emit FAQ structured data.
+
+That decision belongs to Localization & Search Structure and the Website Engine's resolved search intent.
+
+Content existence and search markup eligibility remain separate.
+
+Location Content
+
+Service-area facts originate in the Business Record.
+
+Business Record
+
+Abilene Potosi Buffalo Gap Tuscola
+
+That does not automatically create four Location Content pages.
+
+service area fact ↓ search / product eligibility rules ↓ Location Content where justified
+
+Where a location deserves website-specific expression, the CMS Content Model can represent it structurally.
+
+Conceptually:
+
+Location Content
+
+content\_id geography reference
+
+display name approved summary local context service relationships FAQ relationships asset references where relevant
+
+localized expression
+
+The Website Engine and search specification determine whether that content receives a page.
+
+A structured geography does not automatically become a generated SEO page.
+
+Content records and pages are different things
+
+A content record is reusable content.
+
+A Page is website structure.
+
+Do not make one database object do both jobs.
+
+Service Content Drain Cleaning
+
+may appear in:
+
+Homepage Services index Drain Cleaning page Footer service list related-services component
+
+Likewise:
+
+Business Profile Content
+
+may appear in:
+
+Homepage About page Footer Contact page
+
+The content remains one semantic source.
+
+The Website Engine determines each placement.
+
+Content bindings
+
+The Website Engine references content semantically.
+
+Conceptually:
+
+Homepage
+
+Featured Services ↓ Service Content: Sewer Repair Repiping Water Heater Replacement
+
+or:
+
+Service Page
+
+Primary Service Content: Drain Cleaning
+
+Related FAQs: faq\_01 faq\_07
+
+Supporting Proof: proof\_02
+
+The binding uses Rule & Form identity.
+
+It does not use Framer collection positions or array indexes as meaning.
+
+Ordering is contextual
+
+A content entity does not need one global order.
+
+Drain Cleaning might be:
+
+homepage priority: 2
+
+while appearing:
+
+alphabetically
+
+on a services index.
+
+Ordering belongs to the Website Engine or the specific relationship being resolved.
+
+Do not write one generic:
+
+sort\_order = 2
+
+onto Service Content and expect it to represent every website context.
+
+Field semantics
+
+Content fields must have defined meaning.
+
+A field is not merely:
+
+string
+
+because the storage system accepts strings.
+
+For each field, the content schema should know whether it is:
+
+required optional
+
+shared across locales localized
+
+plain text formatted content
+
+single reference multiple references
+
+asset reference structured value
+
+This allows validation before provider execution.
+
+Short expression
+
+Short content such as:
+
+title headline button label short summary FAQ question
+
+should remain plain text unless formatting is genuinely required.
+
+Do not encode unnecessary markup into ordinary fields.
+
+Long-form expression
+
+Longer formatted content should use a provider-independent representation.
+
+Framer-native rich-text objects must not become canonical Rule & Form content.
+
+The initial representation should be only as complex as the V1 template requires.
+
+Do not build a general block editor before the product needs one.
+
+References use Rule & Form identity
+
+Relationships between content records are explicit.
+
+Examples:
+
+Service Content ↓ FAQ Content
+
+Service Content ↓ Asset
+
+Location Content ↓ Service Content
+
+Project Content ↓ Service Content
+
+References use stable Rule & Form identifiers.
+
+Avoid duplicating full nested content merely because it is convenient for one rendering path.
+
+Service Content
+
+faq\_ids: faq\_01 faq\_07
+
+is conceptually preferable to embedding two independent copies of those FAQs if the FAQs are intended to remain shared.
+
+No orphan references
+
+Compilation fails when a required reference points to content that cannot be resolved.
+
+Service Content ↓ faq\_99
+
+faq\_99 does not exist
+
+↓
+
+validation failure
+
+Do not silently drop required relationships because a downstream provider would tolerate them.
+
+Assets are references
+
+Content records reference Rule & Form-managed Assets.
+
+Service Content ↓ Asset ID ↓ managed Rule & Form Asset
+
+Not:
+
+Service Content ↓ temporary upload URL
+
+and not:
+
+Service Content ↓ Framer image reference
+
+The publishing layer resolves Rule & Form Assets into provider assets.
+
+Asset roles are semantic
+
+A content entity may distinguish:
+
+primary image gallery images team image credential image project image
+
+Do not require templates to infer meaning from array position alone.
+
+assets\[0\]
+
+should not secretly mean:
+
+hero image
+
+unless that contract is explicitly defined.
+
+Localization
+
+One semantic content entity can have multiple approved language expressions.
+
+Service Content
+
+identity: svc.plumbing.drain\_cleaning
+
+↓
+
+English Drain Cleaning
+
+Spanish Limpieza de desagües
+
+The content is related by identity.
+
+It is not two unrelated services.
+
+Shared and localized fields differ
+
+Some values should be localized:
+
+headline summary body FAQ question FAQ answer CTA expression
+
+Some values may legitimately be shared:
+
+license number phone number asset identity service identity structured numeric facts
+
+The schema should know which class a field belongs to.
+
+Missing localization is explicit
+
+Do not silently mix languages because one field is missing.
+
+For a required localized field, the locale policy must say whether the result:
+
+blocks locale publication uses an explicitly permitted shared value is omitted
+
+The publisher does not decide this ad hoc.
+
+Localization & Search Structure owns locale and search policy.
+
+Content State is upstream
+
+Content State owns approved expression and safe-regeneration behavior.
+
+The CMS Content Model consumes it.
+
+Business Record change ↓ Content State evaluation ↓ generated / preserved / locked / approved expression ↓ CMS Content Model
+
+The CMS layer does not independently regenerate content because a field is inconveniently missing.
+
+Locks survive
+
+Suppose an approved service summary has been manually locked.
+
+Business Record changes ↓ safe regeneration ↓ locked summary preserved ↓ Content State Version ↓ Service Content
+
+The CMS Content Model receives the resolved approved value.
+
+It does not know better than the lock.
+
+Overrides, Locks & Safe Regeneration owns that policy.
+
+Website Engine is downstream and adjacent
+
+The Website Engine does not need to duplicate content records.
+
+It binds them into the Site.
+
+CMS Content Model
+
+Service Content FAQ Content Business Profile Content Location Content
+
+Website Engine
+
+Homepage Recipe Service Page Recipe Navigation Section eligibility CTA intent
+
+↓
+
+Website Manifest
+
+For example:
+
+Service Content
+
+Drain Cleaning
+
+does not imply:
+
+Drain Cleaning page exists
+
+The Website Engine determines page eligibility.
+
+Likewise:
+
+FAQ Content exists
+
+does not mean:
+
+FAQ appears everywhere
+
+Placement remains website logic.
+
+Provider publishing
+
+Publishing Maps Rule & Form content fields into the active provider implementation.
+
+Rule & Form
+
+Service Content headline summary image FAQs
+
+↓
+
+Publishing Mapping
+
+↓
+
+Framer
+
+Services collection Name Summary Image FAQ references
+
+The Publishing Mapping is independently versioned.
+
+A Framer field may move or be renamed without redefining Service Content.
+
+Provider shape may differ
+
+Rule & Form may model:
+
+Service Content
+
+while one template requires:
+
+Framer Services item
+
+and another implementation eventually requires:
+
+static generated page data
+
+or:
+
+another CMS provider
+
+That is acceptable.
+
+The CMS Content Model describes Rule & Form content, not Framer storage.
+
+Desired content state
+
+Publishing consumes a complete desired set of managed content.
+
+Conceptually:
+
+frozen Business Record \+ frozen Content State ↓ resolve CMS Content Model ↓ complete desired content set
+
+Suppose:
+
+Version 8
+
+Drain Cleaning Water Heater Repair Repiping
+
+becomes:
+
+Version 9
+
+Drain Cleaning Water Heater Repair Sewer Repair
+
+The desired content projection changes accordingly.
+
+remove desired Repiping content add desired Sewer Repair content
+
+Framer Publishing owns whether a removed provider item is deleted, drafted, or otherwise excluded according to the active publishing mapping.
+
+The CMS Content Model only states what content belongs in desired Rule & Form output.
+
+Stable identity makes updates safe
+
+A content update should resolve to the same logical entity.
+
+Service Content
+
+content\_id: cnt\_service\_drain
+
+service\_id: svc.plumbing.drain\_cleaning
+
+Changing:
+
+headline summary image localized expression
+
+does not create a different service.
+
+This lets publishing reconcile:
+
+existing desired content ↓ new desired content ↓ same identity ↓ update provider representation Slugs remain separate
+
+A service page route may change.
+
+That does not change Service Content identity.
+
+service content identity ≠ page identity ≠ slug ≠ Framer item ID
+
+Keeping these separate prevents routing and provider implementation from contaminating content identity.
+
+Validation
+
+The CMS Content Model is validated before publishing.
+
+Validation should catch at least:
+
+unknown content type invalid content identity missing required field invalid source reference orphan relationship invalid asset reference unsupported field shape required localization missing duplicate identity content incompatible with schema version
+
+Validation of business truth remains upstream.
+
+For example:
+
+claim: 24/7 Emergency Service
+
+being factually allowed belongs to Business Record and business-rule validation.
+
+The CMS validator verifies that the approved content record is structurally valid for publishing.
+
+Do not make every layer independently re-decide whether the business claim is true.
+
+Schema versioning
+
+The CMS Content Model has its own schema version.
+
+That version is not:
+
+Business Record version Content State version Vertical Blueprint version Template version Publishing Mapping version
+
+These concepts evolve independently.
+
+Conceptually:
+
+Business Record Version 18
+
+Content State Version 11
+
+CMS Content Schema 3
+
+Template Version 5
+
+Publishing Mapping 4
+
+The Publishing Run freezes the versions required to reproduce its output.
+
+Schema migration
+
+If CMS Content Schema v4 changes the representation of FAQ relationships, that does not imply business truth changed.
+
+The system may deterministically interpret or rebuild the derived CMS content projection from its authoritative frozen sources.
+
+The CMS projection is derivative.
+
+There is no reason to manufacture a Business Record revision merely because a publishing-content schema improved.
+
+Persistence
+
+V1 does not require every resolved CMS Content record to become a permanently editable first-class table.
+
+There are two legitimate implementation patterns:
+
+derive during compilation
+
+or:
+
+persist a resolved projection for inspection / reuse
+
+The repository should choose the simpler implementation that still supports:
+
+deterministic publishing validation debugging Workbench inspection stable provider mappings where required
+
+If persisted, the content projection remains reproducible from its authoritative inputs.
+
+Persistence does not convert a projection into canonical truth.
+
+Do not create a second content administration system
+
+Avoid:
+
+Business Record ↓ Content State ↓ CMS Content table
+
+then
+
+staff manually edits CMS Content table
+
+That creates conflicting authorities.
+
+Managed edits enter through Business Record or Content State according to what is actually being changed.
+
+Workbench
+
+Workbench should make the content relationship inspectable.
+
+For a Service Content record:
+
+SERVICE CONTENT
+
+Identity svc.plumbing.drain\_cleaning
+
+Business fact source Business Record Version 18
+
+Approved expression source Content State Version 11
+
+English complete
+
+Spanish complete
+
+Referenced assets 3
+
+Used by Homepage Services page Drain Cleaning page
+
+Provider mapping Framer Services item
+
+Workbench should also distinguish:
+
+SOURCE VALUE APPROVED CONTENT CMS CONTENT RECORD LIVE PROVIDER VALUE
+
+That separation makes debugging possible.
+
+If a live website contains the wrong service summary, we should be able to determine whether the error originated in:
+
+Business Record Content State CMS content resolution Website binding Publishing Mapping provider divergence
+
+rather than guessing.
+
+V1 scope
+
+V1 implements only the content model required to publish the first production-quality Plumbing Site. <Badge color="blue" size="sm" stroke>V1 scope</Badge>
+
+V1 requires:
+
+provider-independent content identity schema-versioned content records Business Profile Content required by the first Site Service Content FAQ Content where used Location Content where genuinely required Offer, proof, or project content only where the active Site requires it canonical service references support for legitimate custom services Rule & Form Asset references English expression Spanish expression explicit shared-versus-localized field semantics content relationships by Rule & Form ID validation before provider publishing desired-state content resolution stable identity across content edits compatibility with Website Engine bindings compatibility with versioned Framer Publishing Mapping Workbench-readable provenance
+
+V1 does not require:
+
+a customer-facing generic CMS a WYSIWYG page builder arbitrary customer-defined content types arbitrary runtime schemas a universal block editor Framer-native objects as canonical content every future trade's content model hundreds of speculative content fields automatic location-page generation duplicate editable CMS truth runtime AI generation during provider publishing a separate database table for every content type unless implementation needs it Acceptance conditions
+
+The CMS Content Model is working when:
+
+A Service Content record can be resolved without knowing a Framer collection ID. A Service Content record references stable service identity rather than visible service wording alone. A legitimate custom Business service can receive content without being assigned a false canonical service. Changing approved wording does not change service identity. Changing a page slug does not change content identity. The same Service Content can be bound to multiple website surfaces without duplicating canonical content. The Website Engine decides where content appears rather than the content record deciding its own page placement. Missing optional content can be omitted according to Website Engine rules. Missing required content is detected before provider mutation. FAQ relationships use stable Rule & Form identity. Asset relationships use Rule & Form Asset identity. Temporary upload URLs and Framer asset IDs do not become canonical asset identity. English and Spanish expression remain tied to the same semantic content entity. Missing required Spanish expression cannot silently produce mixed-language output. Content State locks survive CMS content resolution. A Business Record fact change can alter the desired CMS projection without directly writing Framer. Removing an offered service can remove its desired Service Content from the Site without manually locating provider records. Publishing Mapping can change without changing what Service Content means. A Framer collection field can be renamed without rewriting the Business Record or Content State. Invalid references fail before publishing. Workbench can trace a live content value back through CMS Content, Content State, and Business Record where applicable. Persisting a CMS projection does not make it independently editable canonical truth. The demo uses the same CMS Content Model as a real customer Site. Foundation rules The CMS Content Model is a provider-independent website-content contract. It is not the Business Record, Content State, Website Manifest, or provider CMS schema. Business Record owns facts. Content State owns approved expression. The CMS Content Model packages approved expression into typed reusable content records. The Website Engine decides page and section placement. Content identity is Rule & Form identity. Provider IDs never replace it. Visible labels, slugs, array positions, and provider item IDs are not semantic content identity. Known services remain linked through stable canonical service IDs. Legitimate custom content remains representable without false normalization. Reusable content records are separate from pages that consume them. Ordering is contextual unless the domain explicitly defines a global order. Relationships between content records use stable Rule & Form references. Assets are referenced through Rule & Form Asset identity. Localized expressions remain attached to the same semantic content identity. The schema distinguishes localized fields from deliberately shared fields. Required localization never silently falls back to the wrong language. Content generation and approval happen upstream in Content State, not during provider publishing. Content State locks and approved overrides survive CMS resolution. The CMS Content Model expresses desired content, not current provider reality. Publishing Mapping translates Rule & Form content into provider-specific CMS structures. Provider schema changes do not redefine Rule & Form content meaning. CMS Content Schema versioning is separate from Business Record, Content State, Template, Blueprint, and Publishing Mapping versions. Validation happens before provider mutation. A persisted CMS projection remains derivative and recomputable. Rule & Form does not create another editable source of truth merely because publishing needs structured content. V1 implements only the content types the first real Plumbing Site requires. The same model serves demo and production.
+
+The CMS Content Model should make publishing boring.
+
+By the time Framer sees a content record, Rule & Form should already know what it is, what it means, which approved expression belongs to it, and which Site structures are allowed to use it.
+
+Own the meaning. Structure the content. Map the provider last.

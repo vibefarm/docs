@@ -1,5 +1,6 @@
 ---
 title: "Accounts, Tenancy & Identity"
+description: "How Rule & Form separates authentication, authorization, tenancy, business identity, and internal authority while enforcing Organization isolation across customer and system access."
 ---
 
 Authentication proves who is acting.
@@ -8,65 +9,81 @@ Authorization determines what that actor may do.
 
 Tenancy determines which customer's data the action may reach.
 
-Those are separate concerns, and a login is never by itself permission to access a business.
+Those are separate concerns, and a login is never by itself permission to access a Business.
 
-<Callout icon="terminal" color="#8B5CF6">
-  **For implementation** — this page owns the authorization and tenant-safety contract. [Domain Model & Database Schema](/architecture/foundation/domain-model-and-database-schema) owns how the schema enforces it. Subsystem pages own behavior inside their domains. Inspect the repository and the relevant Build Spec page before changing a tenant-owned code path.
-</Callout>
+ \<Callout icon="terminal" color="#8B5CF6"\> **For implementation** — Supabase Auth owns authentication mechanics. Rule & Form owns Membership, authorization, Organization tenancy, Business ownership, and internal authority. Customer-scoped access uses both explicit Organization scope and PostgreSQL Row Level Security. Privileged system access may bypass ordinary RLS technically, but it never bypasses Rule & Form tenant resolution. \</Callout\> 
 
 ## The identity model
 
 ```text
+```
+
+```text
+Supabase Auth
+      ↓
 User
-  ↓
+      ↓
 Membership
-  ↓
+      ↓
 Organization          ← tenant boundary
-  ↓
+      ↓
 Business              ← represented company
-  ↓
-Business data
+      ↓
+Business-owned state
 ```
 
 | Object | What it is |
-| --- | --- |
-| **User** | An authenticated human who can access the Rule & Form application |
-| **Organization** | The tenant boundary. All customer-owned data resolves beneath one Organization |
-| **Membership** | The relationship between a User and an Organization. Permissions attach here |
+| :-- | :-- |
+| **User** | An authenticated human recognized by the Rule & Form application |
+| **Membership** | The relationship between a User and an Organization. Customer authority attaches here |
+| **Organization** | The tenant boundary. Customer-owned state resolves beneath one Organization |
 | **Business** | The contractor or company Rule & Form represents and operates for |
 
 These remain distinct even when V1 commonly has one User, one Organization, and one Business.
 
 **The simple case must not collapse the model.**
 
-<Accordion title="Canonical terminology — Organization, not account">
-  **Organization** is the Rule & Form domain term for the tenant boundary.
+<br />\<Accordion title="Canonical terminology — Organization, not account"\><br />  **Organization** is the Rule & Form domain term for the tenant boundary.<br />
 
-  Authentication or framework code may use terms such as `account` internally. Those implementation names do not create a second domain concept.
+Authentication, framework, or provider code may use terms such as `account`, `workspace`, or `team`. Those implementation names do not create another Rule & Form domain concept.
 
-  Build Spec pages, domain code, and schema naming converge on **Organization** unless an external library contract requires otherwise.
+Build Spec pages, domain code, schema naming, and operational tooling converge on **Organization** unless an external contract requires otherwise.
 
-  [Naming, IDs & Conventions](/architecture/foundation/naming-ids-and-conventions) is the enforcement point.
-</Accordion>
+[Naming, IDs & Conventions](/architecture/foundation/naming-ids-and-conventions) is the enforcement point.<br /><br />\</Accordion\>
 
 ### Organization and Business
 
-Organization answers **whose account is this**. Business answers **which business are we representing**.
+Organization answers **whose Rule & Form tenant is this**.
 
-They are not interchangeable. An Organization can eventually own more than one Business without redefining user identity or tenant ownership. V1 may expose only one Business per Organization <Badge color="blue" size="sm" stroke>V1 scope</Badge>, but the domain must not require that assumption forever.
+Business answers **which real company are we representing**.
+
+They are not interchangeable.
+
+```text
+```
 
 ```text
 Organization
-  ↓
+    ↓
 Business
-  ├── Business Record
-  ├── Site(s)
-  ├── operational records
-  ├── integrations
-  └── capabilities
+    ├── Business Record
+    ├── Site(s)
+    ├── Customers / Leads / Jobs
+    ├── Conversations / Appointments
+    ├── integrations
+    └── capabilities
 ```
 
-Business is also not a second tenant key. A Business always resolves to its owning Organization, and authority is verified against that Organization before a business-scoped operation runs.
+An Organization can eventually own more than one Business without redefining identity or tenancy.
+
+V1 may expose only one Business per Organization. \<Badge color="blue" size="sm" stroke\>V1 scope\</Badge\>
+
+The domain must not require that assumption forever.
+
+Business is not a second tenant boundary.
+
+```text
+```
 
 ```text
 businessId
@@ -75,28 +92,37 @@ owning Organization
     ↓
 verify authority
     ↓
-scoped operation
+business-scoped operation
 ```
 
 **Knowing a Business ID is not authorization to act on it.**
 
-This is separate from the one-Business-to-many-Sites relationship defined in the [domain model](/architecture/foundation/domain-model-and-database-schema).
-
 ### Users and Memberships
 
-A User represents application identity. Authentication state, sessions, credential mechanisms, and identity verification belong to the identity system. Business facts do not.
+A User represents application identity.
+
+Authentication state, sessions, credential mechanisms, and sign-in flows belong to the authentication system. Business facts do not.
 
 ```text
-Login email
-    owner@example.com
-
-Business contact email
-    service@johnsonplumbing.com
 ```
 
-Those values may match. They mean different things.
+```text
+User login email
 
-Access to an Organization exists through Membership or explicit internal authority. Permissions attach to the relationship between the actor and the Organization — they do not become global properties of the User.
+owner@example.com
+
+
+Business public email
+
+service@johnsonplumbing.com
+```
+
+Those values may happen to match. They mean different things.
+
+Access to an Organization exists through a current Membership or explicit Rule & Form internal authority.
+
+```text
+```
 
 ```text
 User
@@ -104,21 +130,47 @@ User
   └── Membership → Second Organization
 ```
 
+Authority belongs to the relationship.
+
 A User being an administrator in one Organization grants no authority in another.
 
 ---
 
-## Authority and tenant context
+## Authentication and authority
 
-Better Auth currently provides application authentication and session management. Rule & Form owns the authorization and tenant-safety requirements around it.
+Supabase Auth establishes the authenticated User and session.
 
-The authentication library can change without changing **User · Organization · Membership · Business · tenant ownership**.
+Rule & Form establishes what that User may reach.
 
-Authentication establishes the actor. It does not establish tenant scope.
+```text
+```
+
+```text
+Supabase session
+        ↓
+authenticated User
+        ↓
+Rule & Form Membership
+        ↓
+authorized Organization
+        ↓
+Business operation
+```
+
+The authentication provider can change without redefining:
+
+**User · Membership · Organization · Business · tenant ownership**
+
+Authentication establishes the actor.
+
+It does not establish tenant scope.
 
 ### Resolving the tenant
 
-Every customer-owned request resolves an authorized tenant before accessing customer data.
+Every customer-owned request resolves an authorized Organization before accessing customer data.
+
+```text
+```
 
 ```text
 Session
@@ -127,89 +179,302 @@ Authenticated User
     ↓
 Requested Organization
     ↓
-Verify Membership / authority
+Verify current Membership
     ↓
 Authorized tenant context
+    ↓
+Requested Business
+    ↓
+Verify Business ownership
     ↓
 Business operation
 ```
 
-<Callout icon="lock" color="#E2E8F0">
-  An Organization or Business identifier supplied by the client identifies a **requested resource**. It is never proof of permission.
-</Callout>
+<br />\<Callout icon="lock" color="#E2E8F0"\><br />  An Organization, Business, Site, Lead, or other identifier supplied by a client identifies a requested resource. It is never proof of permission.<br />\</Callout\><br />
 
-Authority is verified on every request. A session that outlives a Membership does not retain the access that Membership previously granted.
+A valid session that outlives a Membership does not preserve the authority that Membership previously granted.
+
+### Membership remains application authority
+
+Membership is canonical Rule & Form authorization state.
+
+Do not make Organization authority depend solely on data copied into a browser, user-editable profile metadata, or cached session claims.
+
+```text
+```
+
+```text
+authentication
+    identifies the User
+
+Membership
+    establishes Organization authority
+```
+
+If a Membership is removed:
+
+```text
+```
+
+```text
+User remains authenticated
+
+but
+
+Organization authority is gone
+```
+
+Authentication and authorization remain separate throughout the session lifecycle.
 
 ---
 
 ## Tenant isolation
 
-This page owns the tenant-isolation contract.
+Every tenant-owned operation carries explicit Organization context into the data-access boundary.
 
-Every operation involving tenant-owned data carries the relevant Organization context into the data-access boundary. Business-scoped operations also prove that the Business belongs to that authorized Organization.
+Business-scoped operations also prove that the Business belongs to that Organization.
+
+Conceptually:
+
+```text
+```
 
 ```text
 getLeads(organizationId, ...)
-getBusinessRecord(organizationId, businessId)
-getSite(organizationId, businessId, siteId)
+
+getBusinessRecord(
+    organizationId,
+    businessId
+)
+
+getSite(
+    organizationId,
+    businessId,
+    siteId
+)
 ```
 
-The exact function signatures may differ. The invariant does not.
+The exact function signatures may differ.
+
+The invariant does not.
 
 Before tenant-owned data can be read or changed:
 
-1. the actor is authenticated where required,
-2. authority over the Organization is verified,
-3. Business ownership is verified where applicable,
-4. the database operation is scoped to that tenant.
+1. <br />the actor is authenticated where required,<br />
+2. <br />authority over the Organization is verified,<br />
+3. <br />Business ownership is verified where applicable,<br />
+4. <br />the database operation remains scoped to that tenant.<br />
 
 We do not:
 
-- retrieve global customer data and filter afterward
-- trust a tenant identifier because the client supplied it
-- treat knowledge of a Business or object ID as authorization
-- rely on UI visibility as access control
-- assume authenticated means authorized
+- <br />retrieve global customer data and filter afterward<br />
+- <br />trust a tenant identifier because the client supplied it<br />
+- <br />treat knowledge of an object ID as authorization<br />
+- <br />rely on UI visibility as access control<br />
+- <br />assume authenticated means authorized<br />
 
-### Database enforcement
+---
 
-Explicit application scoping is the primary tenant-isolation mechanism. Tenant-owned queries apply their Organization boundary at the database query itself.
+## Two-layer containment
 
-**Row Level Security is not the sole guarantee.**
+Customer-scoped access uses two protections together.
 
-<Accordion title="Why RLS cannot be the primary mechanism">
-  Privileged server processes, background work, integrations, and internal operations may execute outside ordinary user-scoped database policies. Tenant scope therefore remains mandatory in application data access.
+```text
+```
 
-  Database policies may provide defense in depth where useful. They do not replace explicit tenant scoping.
-</Accordion>
+```text
+APPLICATION
 
-Three questions, three answers:
+authorized Organization
+        ↓
+tenant-scoped domain operation
 
-| Question | Answered by |
-| --- | --- |
-| Who is acting? | Authentication |
-| May they perform this action? | Authorization |
-| Which Organization's data may the action reach? | Tenant scope |
+        +
 
-### Public demo
+DATABASE
 
-The public demo resolves only to a dedicated Organization containing synthetic Business data. It may run the same production application code, but it cannot switch tenant context into a customer Organization.
+PostgreSQL RLS
+        ↓
+row-level containment
+```
 
-Where the demo exercises external systems, it uses dedicated demo resources or controlled simulation.
+Application scope and RLS protect different failure modes.
 
-<Callout icon="lock" color="#E2E8F0">
-  A public demo action must be incapable of publishing over, messaging through, modifying, or retrieving a real customer account.
-</Callout>
+### Explicit application scope
+
+Tenant awareness remains part of Rule & Form domain code.
+
+Conceptually:
+
+```text
+```
+
+```text
+SELECT ...
+FROM leads
+WHERE organization_id = :authorizedOrganization
+```
+
+not:
+
+```text
+```
+
+```text
+SELECT ...
+FROM leads
+```
+
+followed by filtering in the frontend.
+
+Business rules and tenant scope are resolved before the result reaches presentation code.
+
+### Row Level Security
+
+Customer-accessible tenant-owned tables use appropriate PostgreSQL Row Level Security policies.
+
+RLS provides a second containment boundary if customer-scoped application code attempts to access rows outside its authorized Organization.
+
+Conceptually:
+
+```text
+```
+
+```text
+authenticated User
+        ↓
+current Membership
+        ↓
+Organization
+        ↓
+tenant-owned row
+```
+
+RLS policy definitions belong in version-controlled database migrations alongside the schema they protect.
+
+[Domain Model & Database Schema](/architecture/foundation/domain-model-and-database-schema) owns the relational enforcement.
+
+### Why both are required
+
+RLS does not remove tenant scope from application code.
+
+Application scope does not make database containment unnecessary.
+
+```text
+```
+
+```text
+authorization
+        +
+explicit tenant scope
+        +
+RLS
+        +
+relational integrity
+        ↓
+tenant boundary
+```
+
+**Defense in depth does not mean duplicate sources of truth. It means independent containment.**
+
+---
+
+## Privileged system access
+
+Some Rule & Form operations do not run under an interactive customer session.
+
+Examples include:
+
+```text
+```
+
+```text
+provider webhooks
+background jobs
+publishing
+provider commands
+reconciliation
+internal operations
+controlled provisioning
+```
+
+Those operations may require privileged server-side database access.
+
+Privileged access can bypass ordinary customer RLS enforcement.
+
+That makes tenant resolution more important, not less.
+
+```text
+```
+
+```text
+trusted system trigger
+        ↓
+resolve Organization
+        ↓
+resolve Business where applicable
+        ↓
+tenant-scoped domain operation
+        ↓
+privileged database access
+```
+
+A privileged credential is not tenant authority.
+
+A Provider Mapping is not tenant authority until its ownership has been resolved.
+
+A Business ID is not tenant authority.
+
+### Privileged access stays narrow
+
+Do not make privileged database access the default path for ordinary application code.
+
+Prefer:
+
+```text
+```
+
+```text
+CUSTOMER PATH
+
+authenticated User
+        ↓
+Membership
+        ↓
+Organization
+        ↓
+customer-scoped access
+        ↓
+RLS
+
+
+SYSTEM PATH
+
+trusted server operation
+        ↓
+explicit tenant resolution
+        ↓
+Organization
+        ↓
+narrow privileged access
+```
+
+Privileged Supabase credentials remain server-only and never reach browser code, public environment variables, frontend logs, or demo configuration.
 
 ---
 
 ## Non-interactive tenant resolution
 
-Requests without a customer session obey the same boundary. They resolve their tenant from trusted server-side state rather than from whatever identifier happens to be in hand.
+Requests without a customer session obey the same ownership graph.
+
+They resolve their tenant from trusted Rule & Form state rather than from whichever identifier happens to be convenient.
 
 ### Background work
 
-Background jobs have no interactive user session, so their tenant context must be explicit.
+Background jobs carry explicit tenant context.
+
+```text
+```
 
 ```text
 Provisioning Run
@@ -220,52 +485,76 @@ Business
     ↓
 Scoped records
     ↓
-Provider command
+Provider Command
 ```
 
-Scheduled work, reconciliation, publishing, retries, and asynchronous commands obey the same boundary as interactive requests.
+The same rule applies to:
+
+```text
+```
+
+```text
+Publishing Runs
+Provider Commands
+retries
+reconciliation
+scheduled work
+workflow execution
+```
 
 **A background process does not discover its tenant by searching globally for a convenient matching record.**
 
 ### Webhooks
 
-Provider webhooks arrive without a Rule & Form customer session. Their tenant is resolved through a trusted <Tooltip tip="Rule & Form's configured relationship with an external provider resource, owned by an Organization.">Integration Connection</Tooltip> or <Tooltip tip="The association between a Rule & Form object and its counterpart in a connected provider.">Provider Mapping</Tooltip>.
+Provider webhooks arrive without a Rule & Form customer session.
+
+Their tenant is resolved through a trusted Integration Connection or Provider Mapping.
+
+```text
+```
 
 ```text
 Signed provider event
     ↓
-Verify signature            → did the provider send this?
+Verify provider authenticity
     ↓
 Provider Mapping
     ↓
 Integration Connection
     ↓
-Organization / Business     → which tenant owns it?
+Organization / Business
     ↓
-Record event
+Record Provider Event
     ↓
 Process inside tenant scope
 ```
 
-Signature verification and provider mapping answer different questions. Both are required.
+Signature verification answers:
 
-A provider identifier is not authorization by itself.
+**Did the provider send this?**
 
-<Columns cols={2}>
-  <Card title="Provider Adapters" icon="plug" href="/architecture/integrations-and-execution/provider-adapters">
-    Adapter boundaries and mapping strategy.
-  </Card>
+Provider mapping answers:
 
-  <Card title="Sync & Projections" icon="refresh-cw" href="/architecture/integrations-and-execution/sync-projections-and-reconciliation">
-    Reconciliation and drift detection.
-  </Card>
-</Columns>
+**Which Rule & Form tenant owns it?**
 
-### Internal Rule & Form access
+Both are required.
 
-Rule & Form requires privileged access to operate a managed product. Staff do not use customer passwords or customer authentication credentials.
+A valid provider signature does not grant access to every Rule & Form Organization.
 
-An internal actor enters an explicit tenant context before accessing customer-owned data.
+A provider identifier is not tenant authority by itself.
+
+<br />\<Columns cols=\{2\}\><br />  \<Card title="Provider Adapters" icon="plug" href="/architecture/integrations-and-execution/provider-adapters"\><br />    Provider identity, connections, and mapping boundaries.<br />  \</Card\><br />  \<Card title="Webhooks, Events & Command Queue" icon="workflow" href="/architecture/integrations-and-execution/webhooks-events-and-command-queue"\><br />    Durable ingestion and execution after tenant resolution.<br />  \</Card\><br />\</Columns\><br />
+
+---
+
+## Internal Rule & Form access
+
+Rule & Form requires privileged access to operate a managed product.
+
+Staff do not use customer passwords or customer authentication credentials.
+
+```text
+```
 
 ```text
 Internal User
@@ -274,60 +563,134 @@ Internal authority
     ↓
 Selected Organization
     ↓
-Tenant-scoped operation
+Tenant context
+    ↓
+Controlled operation
 ```
 
-Privileged access does not remove the tenant boundary. It grants an authorized actor the ability to enter one.
+Customer authority and Rule & Form internal authority remain separate domains.
 
-Sensitive internal actions are auditable — changes to canonical business data, overrides, publishing, integration configuration, and actions performed on behalf of a customer.
+A customer administrator having broad authority over their Organization grants no Rule & Form internal privilege.
 
-<Callout icon="terminal" color="#8B5CF6">
-  **V1 scope** — the initial product needs one internal authority level, explicit tenant selection, and an audit record for sensitive actions. A full internal role matrix is not required. If impersonation is introduced, it is treated as privileged internal access with explicit audit history.
-</Callout>
+A Rule & Form operator having authority across Organizations does not make that operator a customer Membership of every Organization.
 
-<Card title="Overrides, Locks & Safe Regeneration" icon="history" horizontal href="/architecture/control/overrides-locks-and-safe-regeneration">
-  Audit history and override behavior.
-</Card>
+### V1 internal authority
+
+V1 requires one Rule & Form internal operator authority. \<Badge color="blue" size="sm" stroke\>V1 scope\</Badge\>
+
+That is sufficient for:
+
+- <br />customer setup<br />
+- <br />Business Record corrections<br />
+- <br />managed changes<br />
+- <br />provider configuration<br />
+- <br />publishing<br />
+- <br />support<br />
+- <br />Workbench inspection<br />
+- <br />recovery operations<br />
+
+A complex internal role matrix is deferred.
+
+### Internal privilege does not remove tenant context
+
+An internal operator may be authorized to reach many Organizations.
+
+A customer-owned operation still executes inside one explicit tenant context.
+
+```text
+```
+
+```text
+Internal authority
+
+can enter:
+    Organization A
+    Organization B
+    Organization C
+
+current operation:
+    Organization B
+```
+
+Sensitive internal actions are auditable.
+
+Audit & Observability owns the audit contract.
 
 ---
 
-## Identities that are not Rule & Form identities
+## Identities that are not Rule & Form Users
 
-### Website visitors
+### Website visitors and contractor customers
 
-A homeowner visiting a contractor website is not a Rule & Form User. A form submission, call, text, or booking creates or maps to customer-acquisition records.
+A homeowner visiting a contractor website is not a Rule & Form User.
+
+```text
+```
 
 ```text
 Website visitor
     ↓
 Customer
     ↓
-Lead / Job inquiry
+Lead
+    ↓
+Job / Conversation / Appointment
 ```
 
-It does not create an application account. Authentication identity and contractor-customer identity remain separate domains.
+Submitting a form, making a call, sending a text, or booking an appointment does not create an application Membership.
+
+Authentication identity and contractor-customer identity remain separate domains.
 
 ### Provider identities
 
-A HighLevel contact, Google account, Stripe customer, Framer project, or other provider object does not become a Rule & Form User, Organization, or Business.
+A HighLevel contact, Google account, Stripe object, Framer project, or another provider object does not become a Rule & Form User, Organization, or Business.
+
+```text
+```
 
 ```text
 Rule & Form Business
-    ↓
+        ↓
 Integration Connection
-    ↓
+        ↓
 Provider Resource
 ```
 
-Provider credentials prove access to an external resource. They do not establish ownership inside Rule & Form.
+Provider credentials prove Rule & Form can interact with an external resource.
+
+They do not establish ownership inside Rule & Form.
+
+### Authentication fields are not Business facts
+
+Application identity and Business Record data also remain separate.
+
+```text
+```
+
+```text
+User login email
+        ≠
+Business public email
+
+User phone
+        ≠
+Business public phone
+
+User locale
+        ≠
+Site locale
+```
+
+Business Record owns canonical Business facts.
 
 ---
 
-## Roles and lifecycle
+## Customer roles
 
-### Customer roles
+The architecture supports roles and permissions through Membership.
 
-The architecture supports roles and permissions. V1 does not require broad customer RBAC. <Badge color="blue" size="sm" stroke>V1 scope</Badge>
+```text
+```
 
 ```text
 User
@@ -339,119 +702,323 @@ Role / Permission
 Organization
 ```
 
-Multiple customer employees, invitations, granular permissions, and richer account administration are added when observed product requirements justify them. Future permissions attach to Memberships and explicit actions, and never weaken tenant isolation.
+V1 does not require broad customer RBAC.
 
-### Customer authority and internal authority
+The first product may expose one customer authority level:
 
-Customer authority and Rule & Form authority are separate domains.
+```text
+```
 
-A customer administrator may administer their Organization — that grants no Rule & Form internal privilege. A Rule & Form operator may have controlled access across Organizations — that does not make the operator a customer member of every Organization.
+```text
+Organization Owner
+```
 
-Support tooling must not contaminate customer identity.
+Multiple employees, invitations, organization switching, granular permissions, custom roles, and richer account administration are added when observed product requirements justify them.
 
-### Account lifecycle
+Future permissions attach to Memberships and explicit actions.
 
-Creating an account establishes identity and tenant ownership before business data is created underneath it.
+They never weaken tenant isolation.
 
-<Steps>
-  <Step title="Create or authorize the User">
-    Application identity only.
-  </Step>
-  <Step title="Create the Organization">
-    The tenant boundary now exists.
-  </Step>
-  <Step title="Create the Membership">
-    Authority attaches to the relationship.
-  </Step>
-  <Step title="Create the Business">
-    The represented company, beneath the tenant.
-  </Step>
-  <Step title="Begin intake">
-    Business data is written under an established owner.
-  </Step>
-</Steps>
+---
 
-Closing an account is not equivalent to deleting its User. Identity lifecycle, business-data lifecycle, provider disconnection, retention, export, and offboarding remain separate concerns, and detailed behavior belongs in the later operating and security specifications.
+## Account creation
+
+Customer account creation establishes tenant ownership before Business data is created underneath it.
+
+<br />\<Steps\><br />  \<Step title="Authenticate the User"\><br />    Supabase Auth establishes application identity.<br />  \</Step\><br />  \<Step title="Create the Organization"\><br />    The tenant boundary now exists.<br />  \</Step\><br />  \<Step title="Create the initial Membership"\><br />    Authority attaches the authenticated User to the Organization.<br />  \</Step\><br />  \<Step title="Create the Business"\><br />    The represented company is created beneath the Organization.<br />  \</Step\><br />  \<Step title="Begin Structured Intake"\><br />    Business state is now collected beneath an established owner.<br />  \</Step\><br />\</Steps\><br />
+
+The initial Organization, Membership, and Business should be created through one controlled onboarding operation where practical.
+
+### Bootstrap authority is narrow
+
+Creating the first Membership presents a necessary bootstrap case:
+
+```text
+```
+
+```text
+Membership grants authority
+
+but
+
+no Membership exists yet
+```
+
+The account-creation path therefore has narrow system authority to create:
+
+```text
+```
+
+```text
+Organization
+initial Membership
+initial Business
+```
+
+for the authenticated new User.
+
+That exception does not become general permission for authenticated users to create arbitrary Memberships or Organizations.
+
+---
+
+## Account lifecycle
+
+Authentication lifecycle, Membership lifecycle, Business lifecycle, and customer-data lifecycle remain separate.
+
+```text
+```
+
+```text
+disable Membership
+        ≠
+delete User
+
+delete User
+        ≠
+delete Organization
+
+cancel service
+        ≠
+delete Business Record
+
+disconnect provider
+        ≠
+delete audit history
+```
+
+V1 needs a controlled way to disable customer access.
+
+Detailed retention, export, deletion, provider disconnection, recovery, and offboarding policy belongs in later security and operating specifications.
+
+The important boundary is already fixed:
+
+**identity lifecycle does not silently destroy Business state.**
+
+---
+
+## Public demo
+
+The public demo resolves only to a dedicated Organization containing synthetic Business data.
+
+```text
+```
+
+```text
+Demo identity
+        ↓
+Demo Organization
+        ↓
+Demo Business
+        ↓
+synthetic state
+```
+
+It may run the same production application code.
+
+It cannot switch tenant context into a real customer Organization.
+
+Where the demo exercises external systems, it uses dedicated demo provider resources or controlled simulation.
+
+<br />\<Warning\><br />  A public demo action must be incapable of publishing over, messaging through, modifying, or retrieving a real customer account.<br />\</Warning\><br />
+
+A demo convenience mechanism may simplify authentication or reset state.
+
+That mechanism terminates inside the demo tenant.
+
+It never becomes a generic authorization bypass.
+
+---
+
+## Relational tenant integrity
+
+Authorization protects operations.
+
+RLS protects row access.
+
+The database schema must also prevent impossible cross-tenant relationships.
+
+Invalid states include:
+
+```text
+```
+
+```text
+Organization A
+    ↓
+Business A
+    ↓
+Site references Business B
+from Organization B
+```
+
+and:
+
+```text
+```
+
+```text
+Lead
+Organization A
+
+references
+
+Customer
+Organization B
+```
+
+Tenant-owned relationships preserve Organization consistency through database constraints.
+
+[Domain Model & Database Schema](/architecture/foundation/domain-model-and-database-schema) owns those constraints.
+
+**Cross-tenant relationships should be invalid data, not merely discouraged application behavior.**
 
 ---
 
 ## Security boundary tests
 
-Tenant isolation is a release requirement, not an architectural assumption.
+Tenant isolation is a release requirement.
+
+It is not accepted because the application appears to hide another customer's records.
 
 V1 must prove:
 
-- Tenant A cannot read Tenant B data.
-- Tenant A cannot write Tenant B data.
-- A Business ID owned by Tenant B is rejected under Tenant A's authority.
-- Changing a Business, Site, Lead, or other object ID cannot cross the tenant boundary.
-- Background jobs remain scoped to their declared Organization.
-- Webhook mappings resolve to one known Organization before processing.
-- The public demo cannot access customer data.
+- <br />Tenant A cannot read Tenant B data.<br />
+- <br />Tenant A cannot insert data under Tenant B.<br />
+- <br />Tenant A cannot update Tenant B data.<br />
+- <br />Tenant A cannot delete Tenant B data.<br />
+- <br />A Business ID owned by Tenant B is rejected under Tenant A authority.<br />
+- <br />Changing a Business, Site, Lead, Customer, or other object ID cannot cross the tenant boundary.<br />
+- <br />Tenant A cannot create relationships pointing to Tenant B objects.<br />
+- <br />Background jobs remain scoped to their declared Organization.<br />
+- <br />Provider Commands remain scoped to their owning Organization.<br />
+- <br />Webhook mappings resolve to one known Organization before domain processing.<br />
+- <br />Internal operations enter explicit tenant context.<br />
+- <br />The public demo cannot access customer data.<br />
+- <br />The public demo cannot operate customer provider resources.<br />
 
-When privileged internal access ships, its tenant selection and sensitive actions are added to the same test surface.
+These tests verify the actual server and database boundary rather than trusting frontend behavior.
 
-These tests verify behavior rather than trusting framework configuration.
+<br />\<Card title="Testing, Fixtures & Demo Reset" icon="circle-check" horizontal href="/architecture/delivery/testing-fixtures-and-demo-reset"\><br />  How tenant isolation, fixtures, and demo safety are proven.<br />\</Card\><br />
 
-<Card title="Testing & Release Gates" icon="circle-check" horizontal href="/architecture/delivery/testing-fixtures-and-demo-reset">
-  How these tests run and what blocks a merge.
-</Card>
+---
 
-<Accordion title="What this page does not decide">
-  - final customer and internal role matrices
-  - invitation and multi-employee workflows
-  - authentication method policy, including MFA, passkeys, social auth, and SSO
-  - session and account-recovery policy
-  - impersonation UX
-  - detailed offboarding and retention behavior
+## What this page does not decide
 
-  Those decisions belong to later product and security passes. The boundary is already fixed: **identity, Membership, Organization, Business, customer identity, and provider identity are separate concepts.**
-</Accordion>
+<br />\<Accordion title="Deferred identity and account policy"\><br />  This page does not yet define:<br />
+
+- <br />multi-employee invitation flows<br />
+- <br />granular customer role matrices<br />
+- <br />organization-switching UX<br />
+- <br />enterprise SSO<br />
+- <br />passkey policy<br />
+- <br />MFA policy<br />
+- <br />session-duration policy<br />
+- <br />account-recovery policy<br />
+- <br />impersonation UX<br />
+- <br />detailed retention and deletion timelines<br />
+
+Those decisions belong to later product and security work when they enter scope.
+
+The boundary is already fixed: **authentication identity, Membership, Organization, Business, customer identity, provider identity, and internal authority remain separate concepts.**<br /><br />\</Accordion\>
+
+---
+
+## V1 scope
+
+V1 implements the smallest account surface that can safely support the accelerator demo and early real customers.
+
+Required:
+
+- <br />Supabase Auth<br />
+- <br />Rule & Form User identity<br />
+- <br />Organization<br />
+- <br />Membership<br />
+- <br />Business<br />
+- <br />one customer Organization Owner authority<br />
+- <br />one Rule & Form internal operator authority<br />
+- <br />explicit tenant context<br />
+- <br />Organization ownership on tenant-owned state<br />
+- <br />Business ownership verification<br />
+- <br />RLS on customer-accessible tenant-owned tables<br />
+- <br />version-controlled RLS policies<br />
+- <br />narrow server-only privileged Supabase access<br />
+- <br />explicit tenant resolution for privileged operations<br />
+- <br />public demo tenant isolation<br />
+- <br />cross-tenant relational integrity<br />
+- <br />tenant-isolation tests<br />
+- <br />auditable sensitive internal actions<br />
+
+V1 does not require:
+
+- <br />Better Auth<br />
+- <br />MakerKit Pro<br />
+- <br />employee invitations<br />
+- <br />organization switching<br />
+- <br />granular customer RBAC<br />
+- <br />seat administration<br />
+- <br />enterprise SSO<br />
+- <br />customer-created roles<br />
+- <br />multiple internal role tiers<br />
+- <br />customer impersonation UX<br />
+- <br />a custom authentication system<br />
+
+**Build the boundary now. Add the account-management surface when the product actually needs it.**
+
+---
+
+## Acceptance conditions
+
+Accounts, Tenancy & Identity is working when:
+
+- <br />A User can authenticate through Supabase Auth.<br />
+- <br />Authentication alone does not grant access to an Organization.<br />
+- <br />A User reaches an Organization through a current Membership.<br />
+- <br />Organization is the tenant boundary for customer-owned state.<br />
+- <br />Business remains distinct from Organization.<br />
+- <br />A Business ID supplied by the browser cannot establish tenant authority.<br />
+- <br />Tenant A cannot read or modify Tenant B data.<br />
+- <br />Tenant A cannot create a relationship pointing to Tenant B data.<br />
+- <br />Customer-scoped tenant tables are protected by appropriate RLS.<br />
+- <br />Application operations still carry explicit Organization scope.<br />
+- <br />Removing a Membership removes Organization authority even if the User remains authenticated.<br />
+- <br />Privileged Supabase credentials never reach browser code.<br />
+- <br />A privileged background operation resolves explicit Organization context before touching tenant data.<br />
+- <br />A webhook resolves Organization through trusted provider relationships before domain processing.<br />
+- <br />Internal Rule & Form access enters explicit tenant context before changing customer-owned state.<br />
+- <br />Rule & Form staff do not require customer passwords or customer sessions.<br />
+- <br />Provider IDs never replace Rule & Form Organization or Business identity.<br />
+- <br />Website visitors and contractor customers do not become Rule & Form application Users.<br />
+- <br />Business contact data remains separate from authentication data.<br />
+- <br />Demo identity cannot enter a customer Organization.<br />
+- <br />Tenant isolation is tested at the server and database boundary rather than inferred from the UI.<br />
 
 ---
 
 ## Foundation rules
 
-1. **Authentication, authorization, and tenancy are separate concerns.**
-2. **Organization is the tenant boundary.**
-3. **Business belongs to an Organization. It is not a second tenant boundary.**
-4. **Knowing an Organization, Business, or object ID does not grant authority over it.**
-5. **Users reach Organizations through explicit Membership or explicit internal authority.**
-6. **Every tenant-owned operation carries explicit Organization scope.**
-7. **Business-scoped operations verify Business ownership inside the authorized Organization.**
-8. **Background jobs and webhooks obey the same tenant boundary as interactive requests.**
-9. **Internal privilege never removes explicit tenant context.**
-10. **Customer roles and Rule & Form internal roles remain separate.**
-11. **Website visitors and contractor customers are not application Users.**
-12. **Provider identities and credentials never become Rule & Form identity.**
-13. **Cross-tenant isolation is tested directly.**
-14. **Authority is revalidated per request.**
-15. **V1 stays narrow without collapsing distinctions the later product will need.**
+1. **Authentication, authorization, and tenancy are separate concerns.**<br />
+2. **Supabase Auth owns authentication mechanics. Rule & Form owns application authority and tenant meaning.**<br />
+3. **Organization is the tenant boundary.**<br />
+4. **Business belongs to an Organization. It is not a second tenant boundary.**<br />
+5. **Users reach Organizations through current Membership or explicit Rule & Form internal authority.**<br />
+6. **Knowing an Organization, Business, Site, Lead, Customer, or provider ID does not grant authority over it.**<br />
+7. **Every tenant-owned operation resolves explicit Organization scope.**<br />
+8. **Business-scoped operations verify Business ownership inside the authorized Organization.**<br />
+9. **Customer-scoped access uses explicit tenant scoping and PostgreSQL RLS together.**<br />
+10. **RLS strengthens database containment. It does not remove tenant awareness from application code.**<br />
+11. **Membership remains Rule & Form authorization state rather than being reduced to user-editable or cached authentication metadata.**<br />
+12. **Privileged Supabase credentials remain server-only.**<br />
+13. **A privileged credential is never tenant authority.**<br />
+14. **Background work carries explicit Organization context.**<br />
+15. **Webhooks resolve tenant ownership through trusted provider relationships before domain processing.**<br />
+16. **Internal Rule & Form authority and customer Membership remain separate domains.**<br />
+17. **Internal privilege grants the ability to enter tenant context. It does not remove tenant context.**<br />
+18. **Website visitors and contractor customers are not application Users.**<br />
+19. **Provider identities and credentials never become Rule & Form identity.**<br />
+20. **Authentication identity and Business Record facts remain separate.**<br />
+21. **Database relationships preserve Organization consistency across tenant-owned objects.**<br />
+22. **The public demo is confined to synthetic tenant state and dedicated provider resources.**<br />
+23. **Cross-tenant isolation is tested directly.**<br />
+24. **V1 stays narrow without collapsing distinctions the later product will need.**<br />
 
-**Know the actor. Resolve the tenant. Verify the authority. Then touch the data.**
-
----
-
-## Proof
-
-<Columns cols={2}>
-  <Card title="Tenant-isolation test results" icon="circle-check" href="https://github.com/ruleandform/platform/actions">
-    The boundary tests above, running in CI.
-  </Card>
-
-  <Card title="Isolated demo tenant" icon="flask-conical" href="https://demo.ruleandform.com">
-    Synthetic Organization, no customer reach.
-  </Card>
-</Columns>
-
-## Next
-
-<Columns cols={2}>
-  <Card title="Domain Model & Database Schema" icon="database" href="/architecture/foundation/domain-model-and-database-schema">
-    How the schema enforces this contract.
-  </Card>
-
-  <Card title="Stack, Repo & Environments" icon="layers" href="/architecture/foundation/stack-repo-and-environments">
-    The platform and environment boundaries.
-  </Card>
-</Columns>
+**Know the actor. Resolve the Organization. Verify the authority. Then touch the data.**

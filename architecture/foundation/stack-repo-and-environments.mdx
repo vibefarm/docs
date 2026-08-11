@@ -1,309 +1,1130 @@
 ---
 title: "Stack, Repo & Environments"
+description: "The V1 application foundation, repository contract, environment boundaries, tenant containment, and infrastructure choices Rule & Form builds on without allowing commodity vendors to define the product."
 ---
 
-Rule & Form is a TypeScript application built on managed infrastructure.
+Rule & Form is a TypeScript application built on MakerKit Lite and Supabase.
 
-Product-specific work lives in the domain model, Business Record, intake, rendering, publishing, provisioning, operational logic, Workbench, and provider interfaces. Generic infrastructure stays generic.
+The starter kit supplies commodity SaaS infrastructure. Rule & Form owns the domain model, Business Record, Vertical Blueprints, structured intake, website system, operational state, provider boundaries, and the rules that make the product distinct.
 
-<Callout icon="terminal" color="#8B5CF6">
-  **For implementation** — this page defines architectural constraints and current platform choices. It does not prescribe file structure, helper functions, or implementation patterns unless stated as a rule. Inspect the current repository and linked specifications before changing working conventions.
-</Callout>
+The distinction is deliberate.
 
-## The stack
+ \<Callout icon="terminal" color="#8B5CF6"\> **For implementation** - V1 starts from MakerKit Lite's existing Next.js \+ Supabase conventions. Do not replace its working authentication, project structure, Supabase setup, or UI foundation because another library is preferred in isolation. Extend the existing repository around Rule & Form's domain boundaries. The Build Spec defines ownership and invariants; the repository defines the implementation that actually exists. \</Callout\> 
+
+## The V1 stack
 
 | Layer | Choice | Role |
-| --- | --- | --- |
-| Application | Next.js · React · TypeScript | Portal, intake, Workbench, internal tools, APIs |
-| Database | PostgreSQL | Canonical application data |
-| Data access | Drizzle ORM | Schema, migrations, typed database access |
-| Authentication | Better Auth | Identity, sessions, Organization membership |
-| Validation | Zod | Runtime, configuration, and schema validation |
-| Background work | Inngest | Durable workflows, retries, scheduled work |
+| :-- | :-- | :-- |
+| Application foundation | MakerKit Lite | SaaS shell, authentication surfaces, protected application foundation, repository conventions |
+| Application | Next.js · React · TypeScript | Portal, intake, Business Hub, Workbench, internal tools, APIs |
+| UI | Tailwind CSS · Shadcn UI | Rule & Form application interface |
+| Repository | Turborepo · pnpm | Application and shared packages |
+| Authentication | Supabase Auth | User identity, sessions, authentication flows |
+| Database | Supabase PostgreSQL | Canonical Rule & Form application data |
+| Tenant containment | Explicit Organization scope \+ PostgreSQL RLS | Prevent cross-tenant access |
+| Data access | Supabase clients behind Rule & Form domain boundaries | Application reads and writes |
+| Database migrations | Version-controlled Supabase SQL migrations | Schema history and deployment |
+| File storage | Supabase Storage | Customer uploads and managed V1 assets |
+| Validation | Zod | Runtime, input, configuration, and domain-boundary validation |
+| Background work | Inngest | Durable workflows, retries, scheduled work, long-running execution |
 | Hosting | Vercel | Application hosting and preview deployments |
-| Source control | GitHub | Canonical repository and history |
-| File storage | S3-compatible object storage | Photos, uploads, generated assets |
-| Email | Resend | Transactional application email |
-| Observability | Sentry · structured logs · workflow history | Errors, system activity, asynchronous execution |
+| Source control | GitHub | Canonical source repository and history |
+| Application email | Resend when required | Transactional product email |
+| Observability | Structured logs · Inngest history · Sentry when activated | Errors and asynchronous system activity |
 
-PostgreSQL is the database contract. The database host can change without changing the domain model.
+These choices define V1 infrastructure.
 
-The storage vendor is deliberately absent from the architecture. The application depends on the storage contract, not a provider.
+They do not redefine Rule & Form's product model.
 
-### What we own
+```text
+```
 
-Commodity infrastructure covers authentication, sessions, membership, storage, transactional email, deployment, error reporting, and UI primitives.
+```text
+COMMODITY FOUNDATION
 
-Rule & Form owns the systems that accumulate Rule & Form knowledge:
+MakerKit Lite
+Supabase
+Vercel
+Inngest
+Resend
+Sentry
 
-**Business Record · trade schemas · structured intake · content state · rendering rules · template mappings · publishing · provisioning · operational domain · Workbench · provider adapters · audit history**
+        ↓ supports
 
-That boundary matters more than the vendor underneath any individual layer.
+RULE & FORM
 
-<Accordion title="Why the vendor list is not the architecture">
-  Hosting, database hosting, storage, authentication libraries, and workflow runners are infrastructure. They can change. Rule & Form's domain objects and operating rules remain stable across those changes.
+Organization
+Business
+Business Record
+Vertical Blueprints
+Structured Intake
+Content State
+Website Engine
+CMS Content Model
+Publishing
+Provisioning
+Leads / Customers / Jobs
+Business Hub
+Workbench
+Provider Adapters
+```
 
-  Naming the current provider documents what exists today. It does not grant permission to couple domain logic to that provider.
+**The infrastructure can change. The domain should survive it.**
 
-  We do not build our own database engine, authentication protocol, object-storage service, deployment platform, telecom carrier, or distributed workflow runtime. Engineering effort goes into the parts that accumulate product knowledge.
-</Accordion>
+---
+
+## Why MakerKit Lite
+
+MakerKit Lite is the starting repository, not a prototype that Rule & Form plans to discard after the accelerator demo.
+
+It already provides the commodity application foundation Rule & Form should not spend its early engineering time recreating:
+
+```text
+```
+
+```text
+authentication flows
+session handling
+protected routes
+profile / account settings
+Next.js application structure
+Supabase integration
+Turborepo structure
+shared UI foundation
+TypeScript configuration
+basic testing foundation
+```
+
+Rule & Form adds the product.
+
+### What Lite does not decide for us
+
+MakerKit Lite does not define the Rule & Form domain model.
+
+In particular, V1 adds:
+
+```text
+```
+
+```text
+User
+    ↓
+Membership
+    ↓
+Organization
+    ↓
+Business
+```
+
+and everything beneath Business.
+
+The initial product surface can remain narrow:
+
+```text
+```
+
+```text
+1 User
+    ↓
+1 Membership
+    ↓
+1 Organization
+    ↓
+1 Business
+```
+
+V1 does not require:
+
+- <br />organization switching<br />
+- <br />team invitations<br />
+- <br />employee administration<br />
+- <br />seat billing<br />
+- <br />customer role editors<br />
+- <br />enterprise SSO<br />
+- <br />a broad permissions interface<br />
+
+The domain distinctions still exist because later product behavior depends on them.
+
+**A small V1 surface does not justify collapsing the tenant model.**
+
+Accounts, Tenancy & Identity owns the full authority contract.
+
+---
+
+## Supabase is infrastructure
+
+Supabase provides several V1 infrastructure capabilities together:
+
+```text
+```
+
+```text
+Supabase Auth
+        ↓
+authenticated User
+
+Supabase PostgreSQL
+        ↓
+Rule & Form canonical data
+
+PostgreSQL RLS
+        ↓
+database containment for customer-scoped access
+
+Supabase Storage
+        ↓
+managed V1 uploads and assets
+```
+
+Rule & Form does not make Supabase concepts its product model.
+
+```text
+```
+
+```text
+Supabase user
+    supports
+Rule & Form User identity
+
+
+Postgres row
+    stores
+Rule & Form domain state
+
+
+Storage object
+    stores
+Rule & Form Asset
+```
+
+The domain identity remains ours.
+
+### PostgreSQL is the durable data contract
+
+Supabase hosts V1 PostgreSQL.
+
+The domain model should not depend on Supabase-specific behavior where ordinary PostgreSQL semantics are sufficient.
+
+Business Record Versions, Provider Commands, Customers, Leads, Sites, Memberships, Publishing Runs, Provider Mappings, and other Rule & Form objects remain application concepts.
+
+A future database-hosting change should not require redefining them.
+
+---
+
+## Data-access boundary
+
+Application code does not treat the Supabase client as permission to query tenant-owned tables from anywhere.
+
+The expected path is:
+
+```text
+```
+
+```text
+application surface
+        ↓
+domain operation
+        ↓
+authorized Organization context
+        ↓
+Rule & Form data-access boundary
+        ↓
+Supabase / PostgreSQL
+```
+
+Page components should not become the authoritative location for tenant queries or business rules.
+
+Provider code should not reach around the domain layer because calling the database directly is easier.
+
+The exact repository functions and package structure may evolve.
+
+The boundary does not:
+
+**tenant context and domain rules reach the database before customer data does.**
+
+---
+
+## Tenant containment uses two layers
+
+V1 uses both explicit Rule & Form tenant scoping and PostgreSQL Row Level Security.
+
+They solve related but different failure modes.
+
+```text
+```
+
+```text
+Authenticated customer request
+
+Supabase Auth
+        ↓
+User
+
+Rule & Form authorization
+        ↓
+Organization
+
+explicit Organization-scoped operation
+        +
+PostgreSQL RLS
+
+        ↓
+
+tenant-owned rows
+```
+
+Customer-accessible tenant tables enable appropriate RLS policies.
+
+The application also carries explicit Organization identity through its domain and data-access paths.
+
+**RLS is a containment boundary. It does not remove tenant awareness from application code.**
+
+### Why explicit Organization scope remains mandatory
+
+Rule & Form also has trusted server operations without an interactive customer session:
+
+```text
+```
+
+```text
+webhooks
+background jobs
+publishing
+provider commands
+reconciliation
+internal operations
+controlled migrations
+```
+
+Some of those operations may legitimately use privileged database access.
+
+Privileged Supabase credentials can bypass ordinary RLS enforcement.
+
+Therefore:
+
+```text
+```
+
+```text
+privileged server operation
+        ↓
+trusted tenant resolution
+        ↓
+explicit Organization
+        ↓
+Business where applicable
+        ↓
+scoped domain operation
+        ↓
+privileged data access
+```
+
+A privileged credential is **not** tenant context.
+
+Knowing a Business ID is **not** tenant context.
+
+Receiving a provider object ID is **not** tenant context.
+
+The application resolves the owner before touching tenant-owned state.
+
+<br />\<Callout icon="lock" color="#E2E8F0"\><br />  Customer paths use database containment and explicit application scope. Privileged paths may bypass RLS technically, but they never bypass Rule & Form tenant resolution architecturally.<br />\</Callout\><br />
+
+---
+
+## Privileged Supabase access
+
+Privileged database access has a narrow server-only boundary.
+
+It is appropriate for operations that genuinely cannot execute under a customer session, such as:
+
+```text
+```
+
+```text
+verified provider webhook processing
+controlled background work
+system reconciliation
+internal administration
+selected provisioning operations
+```
+
+It is not the default client for ordinary application code.
+
+Do not build:
+
+```text
+```
+
+```text
+everything
+    ↓
+service / secret credential
+    ↓
+all rows accessible
+    ↓
+remember to filter correctly
+```
+
+Prefer:
+
+```text
+```
+
+```text
+customer operation
+    ↓
+customer-scoped client + RLS
+
+
+privileged system operation
+    ↓
+narrow server boundary
+    ↓
+explicit Organization scope
+    ↓
+privileged client only where required
+```
+
+Privileged keys never reach the browser, logs, client bundles, screenshots, or public configuration.
+
+---
+
+## No ORM requirement in V1
+
+Drizzle is not a V1 architectural dependency.
+
+MakerKit Lite already supplies a Supabase/PostgreSQL path and migration structure suitable for beginning the application.
+
+Rule & Form should not insert another data abstraction before a real requirement justifies it.
+
+```text
+```
+
+```text
+V1
+
+Supabase
+    ↓
+PostgreSQL
+    ↓
+Rule & Form data-access boundary
+```
+
+If later implementation evidence shows that Drizzle materially improves complex typed querying, schema management, or developer safety, it may be introduced behind the existing boundary.
+
+```text
+```
+
+```text
+future
+
+Rule & Form domain
+        ↓
+data-access boundary
+        ↓
+Drizzle if useful
+        ↓
+Supabase PostgreSQL
+```
+
+That would be an implementation change.
+
+It must not become a Business Record, tenancy, or provider-architecture change.
+
+**Do not add infrastructure because we might want it later.**
 
 ---
 
 ## Repository
 
-One canonical application repository. `main` is production.
+Rule & Form starts from the MakerKit Lite repository rather than recreating its shell in a new Next.js project.
 
-<Tree>
-  <Tree.Folder name="Application surfaces" />
-  <Tree.Folder name="Domain" />
-  <Tree.Folder name="Database" />
-  <Tree.Folder name="Business Record" />
-  <Tree.Folder name="Intake" />
-  <Tree.Folder name="Content" />
-  <Tree.Folder name="Publishing" />
-  <Tree.Folder name="Provisioning" />
-  <Tree.Folder name="Integrations" />
-  <Tree.Folder name="Validation" />
-  <Tree.Folder name="Shared UI" />
-</Tree>
+The repository's working conventions are preserved unless a Rule & Form requirement gives us a concrete reason to change them.
 
-These are logical ownership boundaries, not mandatory folder names. Agents preserve the repository's working structure unless a change is required to enforce one of them.
+Conceptually, the repository contains these ownership areas:
 
-Three rules hold regardless of structure:
+<br />\<Tree\><br />  \<Tree.Folder name="Application surfaces" /\><br />  \<Tree.Folder name="Shared UI" /\><br />  \<Tree.Folder name="Authentication" /\><br />  \<Tree.Folder name="Domain" /\><br />  \<Tree.Folder name="Database & migrations" /\><br />  \<Tree.Folder name="Business Record" /\><br />  \<Tree.Folder name="Intake" /\><br />  \<Tree.Folder name="Content" /\><br />  \<Tree.Folder name="Website Engine" /\><br />  \<Tree.Folder name="Publishing" /\><br />  \<Tree.Folder name="Provisioning" /\><br />  \<Tree.Folder name="Operational domain" /\><br />  \<Tree.Folder name="Integrations" /\><br />  \<Tree.Folder name="Workbench" /\><br />\</Tree\><br />
 
-- Business rules do not belong in page components.
-- Provider-specific behavior does not leak across the application.
-- Database access does not bypass the established data-access boundary for convenience.
+These are logical boundaries.
 
-### Branches and merges
+They are not instructions to create seventeen top-level folders.
 
-Work happens on short-lived branches. A branch represents one coherent change, and every meaningful branch is deployed to a preview environment before production merge.
+<br />\<Callout icon="terminal" color="#8B5CF6"\><br />  Inspect MakerKit Lite's actual package structure before placing code. Preserve a working convention when it can express the Rule & Form boundary correctly. Do not reorganize the repository merely to make its folder tree resemble this document.<br />\</Callout\><br />
 
-Git is the source of truth for application code, migrations, schemas, configuration, and implementation history. Production-only fixes do not exist outside the repository.
+Three rules apply regardless of physical structure:
 
-A change is not ready because it works in one browser session. Repository CI verifies the checks appropriate to the change, and a failing required check blocks merge.
+1. <br />Business rules do not live primarily in page components.<br />
+2. <br />Provider-specific behavior remains behind provider boundaries.<br />
+3. <br />Tenant-owned database access does not bypass the established scoped data-access path for convenience.<br />
 
-**Type safety · linting · automated tests · production build · migration safety**
+---
 
-<Card title="Testing & Release Gates" icon="circle-check" horizontal href="/architecture/delivery/testing-fixtures-and-demo-reset">
-  Exact commands, suites, and gate configuration.
-</Card>
+## Source of truth
+
+GitHub contains one canonical Rule & Form application repository.
+
+`main` represents production application code.
+
+```text
+```
+
+```text
+local change
+        ↓
+short-lived branch
+        ↓
+checks
+        ↓
+preview
+        ↓
+review
+        ↓
+merge to main
+        ↓
+production
+```
+
+Git is the source of truth for:
+
+```text
+```
+
+```text
+application code
+database migrations
+domain schemas
+Vertical Blueprints stored as code/configuration
+Page Recipes
+component contracts
+provider mappings expressed as code/configuration
+environment schema
+tests
+fixtures
+```
+
+Production-only code changes do not exist outside the repository.
+
+### Build Spec versus repository
+
+The two sources answer different questions.
+
+```text
+```
+
+```text
+BUILD SPEC
+
+What must be true?
+Who owns the state?
+What invariants must survive?
+
+
+REPOSITORY
+
+How is it implemented now?
+What code already exists?
+What conventions already work?
+```
+
+When they conflict, the implementation agent surfaces the conflict.
+
+It does not silently rewrite the architecture to match accidental code, and it does not destroy working code merely because the document uses a different example.
+
+---
+
+## Database migrations
+
+Database structure changes through version-controlled Supabase/PostgreSQL migrations.
+
+```text
+```
+
+```text
+schema requirement
+        ↓
+SQL migration
+        ↓
+local validation
+        ↓
+non-production validation
+        ↓
+merge with application change
+        ↓
+production application
+```
+
+A database change must be reproducible from repository history.
+
+Production schema is not maintained through undocumented dashboard edits.
+
+### Forward-compatible releases
+
+Application code and database state do not deploy atomically.
+
+Where adjacent deployments could encounter different schema states, use an expand-contract sequence.
+
+<br />\<Steps\><br />  \<Step title="Expand"\><br />    Add new compatible database structure.<br />  \</Step\><br />  \<Step title="Support both states"\><br />    Deploy application code that can operate safely during transition.<br />  \</Step\><br />  \<Step title="Move"\><br />    Backfill or migrate data and behavior.<br />  \</Step\><br />  \<Step title="Contract"\><br />    Remove obsolete structure in a later controlled release.<br />  \</Step\><br />\</Steps\><br />
+
+Application rollback never assumes the database also rolled back.
+
+---
+
+## Row Level Security changes with the schema
+
+RLS policy changes are database changes.
+
+They belong in the same version-controlled migration history as the tables they protect.
+
+Do not configure a production tenant policy manually in a dashboard and leave no repository record of it.
+
+A tenant-owned table is not considered complete merely because its columns exist.
+
+Its access model must also exist.
+
+```text
+```
+
+```text
+tenant-owned table
+
+schema
++
+foreign-key ownership
++
+indexes where required
++
+RLS policy where exposed
++
+application scoped access
+```
+
+Tenant-isolation tests verify the resulting behavior.
+
+Accounts, Tenancy & Identity owns the authority rules.
+
+Security, Permissions & Secrets owns the broader security policy.
 
 ---
 
 ## Environments
 
-<Tabs>
-  <Tab title="Local">
-    Non-production data and services.
+Rule & Form uses three environment classes in V1.
 
-    Safe to seed, reset, regenerate, corrupt, and delete test data.
+<br />\<Tabs\><br />  \<Tab title="Local"\><br />    Runs the MakerKit application and local Supabase development stack.<br />
 
-    Does not connect to production customer systems by default.
-  </Tab>
-  <Tab title="Preview">
-    Every meaningful branch can run as a deployed preview.
-
-    Non-production data and provider connections.
-
-    Cannot modify live customer records, publish over customer websites, send through customer messaging accounts, or operate against production provider resources.
-  </Tab>
-  <Tab title="Production">
-    `main` deploys here.
-
-    Real customer data and real provider connections.
-
-    Only reviewed code from the canonical repository runs here.
-  </Tab>
-</Tabs>
-
-A separate staging environment is added when operating reality gives us a reason to maintain one. <Badge color="orange" size="sm" stroke>Deferred</Badge>
-
-### Public demo
-
-The public demo runs the real application against a dedicated demo tenant containing synthetic data.
-
-It may share production application code. It does not share customer identity, data, provider mappings, publishing targets, messaging resources, or writable external resources with a real customer.
-
-Demo isolation uses the same tenant-boundary rules as the rest of the application, plus dedicated demo provider configuration wherever an external action is required.
-
-<Warning>
-  A public demo action must be incapable of affecting a customer account.
-</Warning>
-
----
-
-## Data safety
-
-### Tenant isolation
-
-Tenant isolation is explicit in application data access. Every operation on tenant-owned data carries the authorized Organization into the data-access layer, and the scope is applied at the database query itself.
-
-```mermaid
-flowchart TD
-    A[Request] --> B[Authenticated actor]
-    B --> C[Authorized Organization]
-    C --> D[Scoped data operation]
-    D --> E["WHERE organization_id = :authorizedOrganization"]
+```text
 ```
 
-This applies equally to customer requests, internal tools, webhooks, background jobs, provider commands, and reconciliation work.
+```text
+Data is synthetic or development-only.
 
-Authentication answers **who is acting**. Tenant scope answers **which data that action can reach**.
+Local state may be seeded, reset, corrupted, regenerated, and deleted.
 
-<Warning>
-  We do not retrieve global customer data and filter in the frontend. We do not rely on Row Level Security as the primary isolation mechanism.
-</Warning>
+Customer provider credentials are absent by default.
 
-<Accordion title="Why RLS is not the primary mechanism">
-  Privileged server processes — background work, migrations, internal operations, integrations — operate outside user-scoped database policies. Tenant scope therefore remains mandatory in application data access.
+Provider behavior may use sandbox resources, dedicated developer resources, fixtures, or controlled simulation.
+```
 
-  Database policies may add defense in depth. They do not replace explicit tenant scoping.
-</Accordion>
+<br />  \</Tab\><br />  \<Tab title="Preview"\><br />    Runs branch code in a hosted non-production environment.<br />
 
-<Card title="Accounts, Tenancy & Identity" icon="shield" horizontal href="/architecture/foundation/accounts-tenancy-and-identity">
-  Authorization policy and tenant resolution.
-</Card>
+```text
+```
 
-### Database changes
+```text
+Uses non-production application data and non-production provider configuration.
 
-Database structure changes through version-controlled migrations.
+A preview cannot publish over a customer website, send through a production customer messaging resource, mutate production Business Records, or execute against production provider credentials.
+```
 
-<Steps>
-  <Step title="Change the schema">
-    Alongside the application code that requires it.
-  </Step>
-  <Step title="Create the migration">
-    Version-controlled, committed with the code.
-  </Step>
-  <Step title="Validate against non-production data">
-    In local or preview, never against production.
-  </Step>
-  <Step title="Preview, then deploy">
-    Repository history must contain enough information to reconstruct the schema.
-  </Step>
-</Steps>
+<br />  \</Tab\><br />  \<Tab title="Production"\><br />    Runs code merged to `main`.<br />
 
-Production tables are not changed through undocumented manual edits.
+```text
+```
 
-Application code and database state do not change atomically. Where a change would break an adjacent deployment, use an expand-contract sequence.
+```text
+Contains real customer data and approved production provider connections.
 
-<Accordion title="Expand-contract sequence">
-  1. Add compatible structure.
-  2. Deploy code that supports both states.
-  3. Move data or behavior across.
-  4. Remove the obsolete structure in a later release.
+Only production-scoped credentials exist here.
 
-  A destructive schema change is not coupled blindly to the first deploy that stops using the old structure.
-</Accordion>
+Production actions use the full authorization, tenant, validation, command, audit, and observability boundaries defined by the Build Spec.
+```
 
-### Rollback
+<br />  \</Tab\><br />\</Tabs\><br />
 
-Application code can be returned to a known previous deployment. Database migrations do not roll back with it.
+A permanent fourth staging environment is deferred until real operating conditions justify maintaining one. \<Badge color="orange" size="sm" stroke\>Deferred\</Badge\>
 
-Production migrations are therefore forward-moving changes that must remain compatible with the deployment states that legitimately coexist during a release.
+### Environment boundaries matter more than names
 
-Rollback strategy is part of the migration, not something invented after the release fails.
+The invariant is:
 
-### Backup and recovery
+```text
+```
 
-Production customer data requires automated database backup and point-in-time recovery, or an equivalent capability.
+```text
+non-production
+        ↓
+cannot affect
+        ↓
+customer production
+```
 
-A backup is only useful if it can be restored. Recovery is tested periodically against non-production infrastructure.
+A variable named `PREVIEW=true` is not itself protection.
 
-Recovery configuration, retention, and restore procedures are operating requirements, not assumptions. Exact objectives belong in the data-recovery specification.
+The actual credentials, database project, publishing targets, phone resources, provider mappings, and permissions must enforce the separation.
 
 ---
 
-## Operations
+## Public accelerator demo
 
-### Secrets and configuration
+The accelerator demo runs the real Rule & Form application.
+
+It uses a dedicated synthetic Organization and Business.
+
+```text
+```
+
+```text
+Real application code
+        ↓
+Demo Organization
+        ↓
+Demo Business
+        ↓
+synthetic Business Record
+        ↓
+real Rule & Form product paths
+```
+
+The goal is not a second fake application that resembles the product.
+
+The demo should exercise the same:
+
+```text
+```
+
+```text
+Structured Intake
+Business Record
+Website Engine
+Capability resolver
+Lead model
+Business Hub
+Workbench
+publishing orchestration
+```
+
+that production uses.
+
+### Demo isolation is stronger than demo realism
+
+The public demo must not acquire authority over a real customer merely because demonstrating a provider operation would look impressive.
+
+Where external actions are shown, use:
+
+- <br />dedicated demo provider resources<br />
+- <br />synthetic provider mappings<br />
+- <br />non-production projects<br />
+- <br />controlled simulation where a live external action would be unsafe<br />
+
+<br />\<Warning\><br />  A public demo action must be incapable of publishing over, messaging through, modifying, or retrieving a real customer account.<br />\</Warning\><br />
+
+---
+
+## Provider environments
+
+Every provider integration distinguishes environment-specific resources.
+
+Conceptually:
+
+```text
+```
+
+```text
+Framer
+
+development / demo projects
+production customer projects
+
+
+HighLevel
+
+development / demo resources
+production customer resources
+
+
+Other providers
+
+non-production connection
+production connection
+```
+
+A Provider Mapping always resolves through the Integration Connection and tenant that own it.
+
+Do not select provider resources from global environment variables alone where the resource is customer-specific.
+
+```text
+```
+
+```text
+Organization
+    ↓
+Business
+    ↓
+Integration Connection
+    ↓
+Provider Mapping
+    ↓
+Provider resource
+```
+
+Environment configuration says which provider system may be contacted.
+
+Tenant-owned state says which resource belongs to the Business.
+
+---
+
+## Background execution
+
+Long-running work does not depend on the browser request that started it.
+
+```text
+```
+
+```text
+user action
+        ↓
+durable local state
+        ↓
+workflow trigger
+        ↓
+Inngest
+        ↓
+durable steps
+        ↓
+provider work
+```
+
+Closing the browser does not cancel a Publishing Run.
+
+A Vercel request ending does not erase Provider Command intent.
+
+A deployment occurring during long-running work does not redefine the domain state being processed.
+
+Webhooks, Events & Command Queue owns durable external intent.
+
+Workflow & Orchestration Engine owns multi-step execution.
+
+### Inngest does not become the source of truth
+
+Inngest executes and resumes work.
+
+Rule & Form PostgreSQL owns the durable domain state required to explain that work.
+
+```text
+```
+
+```text
+database
+    owns intent and domain truth
+
+Inngest
+    owns workflow execution
+```
+
+If an execution mechanism is replaced later, the Business Record, Provider Commands, Publishing Runs, and other Rule & Form objects do not disappear with it.
+
+---
+
+## Storage
+
+Supabase Storage is the V1 object-storage implementation.
+
+Rule & Form still uses its own stable Asset identity where a file matters to the product.
+
+```text
+```
+
+```text
+Rule & Form Asset
+        ↓
+storage reference
+        ↓
+Supabase Storage object
+```
+
+Business Records, Content State, Sites, or provider mappings should not treat a temporary upload URL as permanent asset identity.
+
+The storage provider can change later without rewriting canonical Business facts.
+
+---
+
+## Secrets and configuration
+
+Configuration is environment-scoped and schema-validated.
 
 | Rule | Applies to |
-| --- | --- |
+| :-- | :-- |
 | Secrets never live in source code | All environments |
-| Local secrets live in ignored environment configuration | Local |
-| Hosted secrets are scoped to the environment that requires them | Preview · Production |
+| Local secrets remain in ignored local configuration | Local |
 | Server-only credentials never reach the browser | All environments |
+| Production credentials never enter Preview | Preview |
 | Provider tokens never appear in logs | All environments |
-| Production credentials are never copied into preview | Preview |
+| Privileged Supabase credentials remain server-only | All environments |
+| Required configuration is validated before dependent work begins | All environments |
 
-Required environment configuration is schema-validated when the application starts. Missing or invalid configuration fails visibly rather than allowing the application to start in an unknown state.
+Not every integration credential needs to exist on day one.
 
-### Observability
+Configuration should be required when the corresponding product capability is introduced.
 
-Thrown exceptions are only one class of failure. Rule & Form must also expose the state of asynchronous and external work.
+Avoid turning an unused future provider into a startup dependency.
 
-**Application errors · structured logs · workflow runs · provider commands · provider events · audit history**
+### Customer-facing Supabase access
 
-A publishing run stuck in retry is visible. A failed provider command is visible. A webhook that arrived but failed processing is visible.
+Only client-safe Supabase configuration may reach browser code.
 
-<Card title="Audit & Observability" icon="activity" horizontal href="/architecture/control/audit-and-observability">
-  Event model, retention, alerting, and operating views.
-</Card>
+Privileged credentials remain behind explicit server boundaries.
 
-### Deployment
-
-Application deployment follows Git — local change, feature branch, CI, preview, review, merge to `main`, production.
-
-Long-running publishing and provisioning work executes independently of the browser request that initiated it. Closing a browser does not terminate a deployment, and a provider failure does not require replaying successful steps from the beginning.
+The application does not assume that hiding a value in a JavaScript variable provides security.
 
 ---
 
-## Working with the Build Spec
+## Vendor accounts are created when required
 
-Cursor, Claude Code, Codex, MCP-connected tools, and other development interfaces operate against the same repository. They are not architectural dependencies, and no development tool gets its own source of truth.
+The architecture may identify a provider before Rule & Form needs an active account with that provider.
 
-<Callout icon="terminal" color="#8B5CF6">
-  **For implementation** — before changing an existing subsystem, inspect the current repository, the relevant Build Spec pages, existing tests and migrations, and the current provider boundary where applicable.
+Do not create and configure every future service merely because it appears in the stack.
 
-  The Build Spec defines intent and invariants. The repository defines the implementation that exists now. When the two conflict, surface and resolve the conflict deliberately rather than silently rewriting one to match the other.
-</Callout>
+The implementation sequence introduces infrastructure as the vertical slice reaches it.
+
+Conceptually:
+
+```text
+```
+
+```text
+baseline
+
+MakerKit Lite
+Supabase
+GitHub
+Vercel
+
+        ↓
+
+need durable workflows
+    add Inngest configuration
+
+        ↓
+
+need transactional application email
+    activate email provider
+
+        ↓
+
+need production error monitoring
+    activate monitoring
+```
+
+This keeps the early environment small and auditable.
+
+---
+
+## Future MakerKit Pro
+
+MakerKit Pro is not a V1 dependency.
+
+Rule & Form must not write V1 code that assumes a future purchase or migration.
+
+If the product later requires richer team accounts, invitations, billing, administration, or another capability that makes MakerKit Pro Supabase economically preferable, that becomes an explicit migration project.
+
+The intended boundary is:
+
+```text
+```
+
+```text
+CURRENT
+
+MakerKit Lite shell
+        +
+Rule & Form domain
+
+
+POSSIBLE FUTURE
+
+MakerKit Pro Supabase shell
+        +
+same Rule & Form domain
+```
+
+The migration may require integration work.
+
+It must not require redesigning:
+
+```text
+```
+
+```text
+Business Record
+Vertical Blueprints
+Website Engine
+Provider Commands
+Publishing model
+Lead model
+Capability State
+Workbench
+```
+
+If moving between SaaS shells requires rewriting those systems, the current architecture has leaked infrastructure into the product.
+
+---
+
+## Working with coding agents
+
+Codex, Claude Code, Cursor, and other development interfaces operate against the same repository.
+
+They do not receive independent architectural authority.
+
+Before changing a subsystem:
+
+```text
+```
+
+```text
+inspect repository
+        ↓
+read System Map
+        ↓
+read owning Build Spec page
+        ↓
+read directly referenced dependencies
+        ↓
+inspect current tests / migrations
+        ↓
+implement narrow change
+```
+
+Do not load the entire Build Spec for every coding task.
+
+The relevant subsystem pages should provide enough context to implement one bounded piece without forcing the agent to reinterpret the whole company.
+
+### Conflict rule
+
+When:
+
+```text
+```
+
+```text
+Build Spec says A
+
+repository currently implements B
+```
+
+the agent surfaces the conflict.
+
+It does not silently choose whichever is easier.
+
+When current provider documentation contradicts the Build Spec about a provider API, verify the provider's current official contract and update the implementation decision deliberately.
+
+---
+
+## V1 scope
+
+V1 infrastructure is intentionally narrow. \<Badge color="blue" size="sm" stroke\>V1 scope\</Badge\>
+
+Required:
+
+- <br />MakerKit Lite as the application baseline<br />
+- <br />Next.js, React, and TypeScript<br />
+- <br />MakerKit's existing Turborepo and UI conventions<br />
+- <br />Supabase Auth<br />
+- <br />Rule & Form Organization / Membership / Business model<br />
+- <br />Supabase PostgreSQL<br />
+- <br />explicit Organization-scoped data access<br />
+- <br />RLS on exposed tenant-owned tables<br />
+- <br />version-controlled SQL migrations<br />
+- <br />Supabase Storage for required assets<br />
+- <br />local development environment<br />
+- <br />isolated hosted non-production environment<br />
+- <br />production environment<br />
+- <br />GitHub repository<br />
+- <br />Vercel deployment<br />
+- <br />Inngest when durable workflow execution enters the vertical slice<br />
+- <br />environment validation<br />
+- <br />tenant-isolation tests<br />
+- <br />public demo isolation<br />
+- <br />server-only privileged credential boundary<br />
+
+V1 does not require:
+
+- <br />Better Auth<br />
+- <br />Drizzle<br />
+- <br />MakerKit Pro<br />
+- <br />customer organization switching<br />
+- <br />team invitation infrastructure<br />
+- <br />broad customer RBAC<br />
+- <br />a permanent staging environment<br />
+- <br />Kubernetes<br />
+- <br />self-hosted PostgreSQL<br />
+- <br />a custom job runner<br />
+- <br />a custom authentication system<br />
+- <br />multiple database abstractions<br />
+- <br />multiple storage providers<br />
+- <br />every future vendor account before it is used<br />
+
+---
+
+## Acceptance conditions
+
+Stack, Repo & Environments is correctly implemented when:
+
+- <br />A clean MakerKit Lite checkout can become the Rule & Form repository without rebuilding authentication from scratch.<br />
+- <br />A real User can authenticate through Supabase Auth and reach only authorized application routes.<br />
+- <br />Rule & Form can represent User → Membership → Organization → Business without requiring customer team-management UI.<br />
+- <br />Tenant-owned customer access is constrained by explicit Organization scope and applicable RLS policy.<br />
+- <br />Tenant A cannot read or modify Tenant B data by changing an object identifier.<br />
+- <br />Privileged server code cannot operate on tenant-owned data without resolving explicit tenant context.<br />
+- <br />Privileged Supabase credentials never appear in browser code.<br />
+- <br />Database schema and RLS policy changes are reproducible from repository migrations.<br />
+- <br />A branch preview cannot reach production customer provider resources.<br />
+- <br />The public demo cannot reach real customer data or production customer provider resources.<br />
+- <br />A background workflow can continue after the initiating browser request ends.<br />
+- <br />Rule & Form durable domain state remains in PostgreSQL rather than existing only inside the workflow provider.<br />
+- <br />Stored assets have Rule & Form identity independent from temporary storage URLs.<br />
+- <br />An implementation agent can locate the governing Build Spec page without treating the Build Spec as replacement for repository inspection.<br />
+- <br />Drizzle can be added later without changing the Rule & Form domain contract if a real need emerges.<br />
+- <br />A future SaaS-shell migration can occur without redefining Business Record, Website Engine, provider identity, or publication provenance.<br />
 
 ---
 
 ## Foundation rules
 
-1. **One repository is the source of truth for application behavior.**
-2. **`main` is production.**
-3. **Every meaningful change is previewable before merge.**
-4. **Required CI checks block unsafe merges.**
-5. **Non-production cannot affect production customer systems.**
-6. **Every tenant-owned data operation carries explicit Organization scope.**
-7. **Database migrations are versioned and deployment-compatible.**
-8. **Code rollback never assumes database rollback.**
-9. **Production data has a tested recovery path.**
-10. **Required configuration is validated before the application operates.**
-11. **Observability includes asynchronous work, not only application exceptions.**
-12. **Provider-specific code stays behind integration boundaries.**
-13. **Development tools may change without changing the source of truth.**
-14. **The Build Spec defines constraints and intent. It does not replace inspection of the working system.**
+1. **MakerKit Lite is the V1 application foundation, not disposable demo code.**<br />
+2. **Supabase Auth owns authentication mechanics. Rule & Form owns authorization and tenant meaning.**<br />
+3. **Organization remains the Rule & Form tenant boundary.**<br />
+4. **Customer-scoped access uses both explicit Organization scope and applicable PostgreSQL RLS.**<br />
+5. **RLS strengthens tenant containment. It does not remove tenant scope from application code.**<br />
+6. **Privileged database access is server-only, narrow, and always paired with trusted tenant resolution.**<br />
+7. **A privileged credential is never tenant authority.**<br />
+8. **Supabase PostgreSQL stores Rule & Form state. Supabase does not define Rule & Form domain identity.**<br />
+9. **V1 does not require an ORM.**<br />
+10. **Database and RLS changes are version-controlled migrations.**<br />
+11. **Business rules do not belong primarily in page components.**<br />
+12. **Provider-specific behavior stays behind integration boundaries.**<br />
+13. **Repository conventions are preserved unless a product requirement justifies changing them.**<br />
+14. **GitHub is the canonical source of application code and schema history.**<br />
+15. `main `**represents production application code.**<br />
+16. **Non-production environments cannot affect production customer systems.**<br />
+17. **The public demo uses real application paths with synthetic tenant state.**<br />
+18. **Inngest executes durable workflows; PostgreSQL retains the domain state that explains them.**<br />
+19. **Supabase Storage is a V1 implementation behind Rule & Form Asset identity.**<br />
+20. **Secrets are environment-scoped and privileged credentials remain server-only.**<br />
+21. **Infrastructure is introduced when the build sequence requires it, not because it may be useful someday.**<br />
+22. **MakerKit Pro is a possible future shell migration, not a V1 dependency.**<br />
+23. **Development tools may change without changing the repository or architecture source of truth.**<br />
+24. **The Build Spec defines intent and invariants. The repository defines current implementation. Conflicts are surfaced, not hidden.**<br />
 
-**The repository is the application. The Build Spec defines the constraints it must preserve.**
+The starting stack should remove commodity work without deciding what Rule & Form becomes.
 
----
-
-## Proof
-
-<Columns cols={2}>
-  <Card title="Production application" icon="external-link" href="https://app.ruleandform.com">
-    The live system this page describes.
-  </Card>
-
-  <Card title="Isolated demo" icon="flask-conical" href="https://demo.ruleandform.com">
-    Real application, synthetic tenant, no customer reach.
-  </Card>
-</Columns>
-
-## Next
-
-<Columns cols={2}>
-  <Card title="Domain Model & Database Schema" icon="database" href="/architecture/foundation/domain-model-and-database-schema">
-    How the schema enforces what this page requires.
-  </Card>
-
-  <Card title="Accounts, Tenancy & Identity" icon="shield" href="/architecture/foundation/accounts-tenancy-and-identity">
-    Who is allowed to reach which tenant.
-  </Card>
-</Columns>
+**Use the foundation. Own the domain. Keep the boundary.**
